@@ -1,0 +1,12 @@
+# Binaries
+/homerun2-notification-catcher
+*.exe
+
+# Build / test output
+/dist/
+*.out
+coverage*
+
+# Local dev
+.env
+*.log
