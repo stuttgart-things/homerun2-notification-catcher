@@ -1,0 +1,27 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: homerun2-notification-catcher
+  description: CLI microservice that consumes messages from Redis Streams and processes them
+  annotations:
+    github.com/project-slug: stuttgart-things/homerun2-notification-catcher
+    backstage.io/techdocs-ref: url:https://github.com/stuttgart-things/homerun2-notification-catcher/tree/main
+    backstage.io/source-location: url:https://github.com/stuttgart-things/homerun2-notification-catcher
+  tags:
+    - consumer
+    - redis
+    - golang
+    - homerun2
+    - cli
+  links:
+    - url: https://github.com/stuttgart-things/homerun2-notification-catcher
+      title: GitHub Repository
+      icon: github
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: homerun2
+  dependsOn:
+    - resource:redis
