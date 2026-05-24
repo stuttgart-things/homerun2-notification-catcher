@@ -1,0 +1,59 @@
+---
+name: Comment Preview URL on PR
+on:
+  pull_request:
+    types: [opened, reopened]
+    branches:
+      - main
+
+permissions:
+  pull-requests: write
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const num = context.issue.number;
+            const url = `https://cc-pr-${num}.homerun2-dev.sthings-vsphere.labul.sva.de`;
+            const ns  = `homerun2-notification-catcher-pr-${num}`;
+            const marker = "<!-- preview-url-bot -->";
+            const body = [
+              marker,
+              "## 🚀 Preview environment",
+              "",
+              `| | |`,
+              `|--|--|`,
+              `| URL | ${url} |`,
+              `| Namespace | \`${ns}\` on \`homerun2-dev\` |`,
+              `| ArgoCD | [\`${ns}\`](https://argocd.platform.sthings-vsphere.labul.sva.de/applications?search=${ns}) |`,
+              "",
+              "Spinning up — give it a couple of minutes for image + kustomize OCI builds to publish and for ArgoCD to sync.",
+              "notification-catcher's preview ships with omni-pitcher + redis-stack co-tenanted in the same namespace; a seed Job posts a fixture to /pitch so a Teams notification fires when you load it.",
+              "Closing this PR tears the preview down automatically.",
+            ].join("\n");
+
+            // Sticky comment: update on reopen instead of stacking duplicates.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: num,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: num,
+                body,
+              });
+            }
