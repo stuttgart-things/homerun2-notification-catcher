@@ -137,6 +137,16 @@ func (m *Dagger) BuildAndTestBinary(
 exec > /app/test-output.log 2>&1
 set -e
 
+echo "=== Writing minimal notify config ==="
+# notification-catcher hard-fails if CONFIG_PATH is unset or the file is
+# missing (silent misconfig is the worst failure mode for a dispatch
+# service). For the build-and-test smoke we just need the server to start
+# and consume one message, so an empty-outputs config is enough — the
+# LogHandler still fires.
+cat > /app/notify.yaml <<'YAML'
+outputs: []
+YAML
+
 echo "=== Starting catcher binary ==="
 ./%s &
 BIN_PID=$!
@@ -176,6 +186,7 @@ exit 0
 		WithEnvVariable("REDIS_PORT", "6379").
 		WithEnvVariable("REDIS_STREAM", "messages").
 		WithEnvVariable("LOG_FORMAT", "text").
+		WithEnvVariable("CONFIG_PATH", "/app/notify.yaml").
 		WithExec([]string{"sh", "-c", testCmd}, dagger.ContainerWithExecOpts{})
 
 	_, err := result.Sync(ctx)

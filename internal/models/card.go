@@ -5,8 +5,8 @@ package models
 // the legacy O365 connector) expect a top-level message with one attachment
 // containing the actual Adaptive Card content.
 type TeamsEnvelope struct {
-	Type        string             `json:"type"`
-	Attachments []TeamsAttachment  `json:"attachments"`
+	Type        string            `json:"type"`
+	Attachments []TeamsAttachment `json:"attachments"`
 }
 
 // TeamsAttachment wraps an Adaptive Card inside the envelope.
