@@ -11,6 +11,9 @@ Container wiring:
 * envFrom <name>-secrets         — webhook URLs / output tokens (if any)
 * env REDIS_PASSWORD valueFrom   — <name>-redis (if Redis is password-protected)
 * volumeMount <name>-notify      — /etc/notification-catcher/config.yaml
+                                   (ConfigMap is caller-supplied — the
+                                   chart only emits it in dev when
+                                   config.notifyConfig is set)
 """
 
 import labels
@@ -98,12 +101,11 @@ deployment = {
                                 name: "tmp"
                                 mountPath: "/tmp"
                             }
-                            if config.notifyConfig:
-                                {
-                                    name: "notify-config"
-                                    mountPath: "/etc/notification-catcher"
-                                    readOnly: True
-                                }
+                            {
+                                name: "notify-config"
+                                mountPath: "/etc/notification-catcher"
+                                readOnly: True
+                            }
                         ]
                     }
                 ]
@@ -121,19 +123,18 @@ deployment = {
                         name: "tmp"
                         emptyDir: {}
                     }
-                    if config.notifyConfig:
-                        {
-                            name: "notify-config"
-                            configMap: {
-                                name: "{}-notify".format(config.name)
-                                items: [
-                                    {
-                                        key: "config.yaml"
-                                        path: "config.yaml"
-                                    }
-                                ]
-                            }
+                    {
+                        name: "notify-config"
+                        configMap: {
+                            name: "{}-notify".format(config.name)
+                            items: [
+                                {
+                                    key: "config.yaml"
+                                    path: "config.yaml"
+                                }
+                            ]
                         }
+                    }
                 ]
                 affinity: {
                     podAntiAffinity: {

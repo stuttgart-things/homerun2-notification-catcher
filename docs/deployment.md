@@ -10,7 +10,7 @@ Manifests are generated from KCL in `kcl/`. One file per Kubernetes resource:
 | `labels.k` | Schema materialisation (reads `option("config.*")`) + common labels |
 | `namespace.k` | Namespace |
 | `serviceaccount.k` | ServiceAccount |
-| `configmap.k` | `<name>-env` (envFrom'd) + `<name>-notify` (mounted as file) |
+| `configmap.k` | `<name>-env` (envFrom'd). `<name>-notify` is caller-supplied. |
 | `secret.k` | `<name>-redis` (Redis password) + `<name>-secrets` (output webhook tokens) |
 | `deploy.k` | Deployment |
 | `main.k` | Entry point — exports `manifests` |
@@ -38,17 +38,31 @@ This is the load-bearing design choice. We want:
 
 Both goals are satisfied by splitting `${VAR}` references across two manifests, with a deliberate escape:
 
-### `<name>-notify` ConfigMap
+### `<name>-notify` ConfigMap (caller-supplied)
 
-Holds the routing YAML, mounted at `/etc/notification-catcher/config.yaml`. References to secret values use `$${VAR}` (double dollar). When Flux's `substituteFrom` runs over the manifest text, `$$` collapses to `$`, so the *applied* ConfigMap contains a literal `${VAR}`. The catcher's own env-interpolation (`internal/config/notify.go`) resolves it at startup against the env supplied by the `<name>-secrets` Secret. The real webhook URL **never lands in the ConfigMap**.
+Holds the routing YAML, mounted at `/etc/notification-catcher/config.yaml`. The Deployment in this chart always mounts a ConfigMap named `<name>-notify` with key `config.yaml`, but **the chart does not emit it** — the caller (cluster overlay) is responsible for creating it. This keeps routing rules in the cluster repo next to other cluster-scoped config (mirroring `homerun2-git-pitcher-watch-config.yaml`).
+
+The right placeholder syntax for secret references depends on whether the Flux Kustomization that reconciles this file has `substituteFrom`:
+
+- **With substituteFrom** (e.g. apply the ConfigMap through the chart's Flux release or a wrapper Kustomization that points at `homerun2-secrets`): use `$${VAR}`. Flux collapses `$$` → `$` at apply time, so the *applied* CM contains a literal `${VAR}`. The catcher resolves the single-`${VAR}` at startup against env.
+- **Without substituteFrom** (most cluster overlays — e.g. `clusters/.../apps/`): use a single `${VAR}`. Flux does nothing, the CM lands with `${VAR}`, and the catcher resolves it at startup.
+
+Either way the real webhook URL **never lands in the ConfigMap**; the catcher's env-interpolation (`internal/config/notify.go`) replaces `${VAR}` from the env supplied by the `<name>-secrets` Secret at startup.
+
+Caller-side ConfigMap, no-substituteFrom (most common):
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homerun2-notification-catcher-notify
+  namespace: homerun2
 data:
   config.yaml: |
     outputs:
       - name: teams-platform-alerts
         type: msteams
-        webhook_url: $${TEAMS_WEBHOOK_URL}    # after Flux: ${TEAMS_WEBHOOK_URL}
+        webhook_url: "${TEAMS_WEBHOOK_URL}"
         filters:
           severity_min: warning
 ```
@@ -136,7 +150,7 @@ To add a new output type that needs a secret env var (e.g. PagerDuty):
      PAGERDUTY_TOKEN: "${PAGERDUTY_TOKEN}"
    ```
 
-2. Reference it in `config.notifyConfig` using `$${PAGERDUTY_TOKEN}`:
+2. Reference it in the caller-supplied `<name>-notify` ConfigMap using `$${PAGERDUTY_TOKEN}`:
 
    ```yaml
    - name: pagerduty
@@ -152,7 +166,7 @@ Cut a release; Flux picks up the new OCI tag; the new output starts firing.
 
 ## Local deploy without Flux
 
-Render manifests, edit the placeholders in the two Secrets manually (or set them in the profile to the real values before render), and `kubectl apply -k`. The `$${…}` in the ConfigMap stays as `$${…}` without Flux — that's harmless because the catcher's env-interp ignores `$$` and only acts on single `${…}`. *Wait*: that's a footgun. For non-Flux deploys, render with single `${…}` in `notifyConfig` so the catcher resolves it directly. See `tests/kcl-deploy-profile.yaml` for the production-ready profile; copy and edit for dev.
+Render manifests, edit the placeholders in the Secrets manually (or set them in the profile to the real values before render), and `kubectl apply -k`. Then hand-apply a `<name>-notify` ConfigMap with single `${…}` placeholders (since there is no Flux substituteFrom to collapse `$$` → `$`) — the catcher resolves single `${…}` directly against env at startup. See `notify.example.yaml` for a template.
 
 ## Namespace
 

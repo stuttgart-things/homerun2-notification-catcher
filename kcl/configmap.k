@@ -1,18 +1,16 @@
 """
 ConfigMaps for homerun2-notification-catcher.
 
-Two are emitted:
-
 * <name>-env  — envFrom'd by the Deployment. Carries Redis connection,
                 logging, consumer group, the CONFIG_PATH pointer, plus any
                 extra env vars folded in via config.extraEnvVars.
 
-* <name>-notify — mounted as a volume at /etc/notification-catcher/config.yaml.
-                  Holds the routing-config YAML. Webhook URLs in the YAML
-                  use $${VAR} so Flux substituteFrom emits ${VAR} into the
-                  applied manifest, and the catcher's runtime
-                  env-interpolation (config.LoadNotifyConfig) resolves it
-                  against the envFrom'd Secret.
+* <name>-notify — caller-supplied. The Deployment always mounts a ConfigMap
+                  with this name at /etc/notification-catcher/config.yaml,
+                  but the chart only emits one when config.notifyConfig is
+                  set (for self-contained dev/test renders). In production
+                  the cluster overlay provides the CM — see
+                  docs/deployment.md.
 """
 
 import labels
