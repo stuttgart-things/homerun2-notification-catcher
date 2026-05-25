@@ -9,7 +9,10 @@
 # everything.
 #
 # Secrets are interpolated from environment variables — ${VAR} is replaced at
-# load time and a missing or empty value is a fatal startup error.
+# load time and a missing or empty value is a fatal startup error. Wrap the
+# placeholder in double quotes when the env value may contain YAML special
+# characters (e.g. `:`, `&`, `?`, `=` — common in webhook URLs). Quoting is
+# always safe.
 #
 # Severity rank (low → high):
 #   debug < info < success < warning < critical = error
@@ -24,7 +27,7 @@ outputs:
   # or storage. Card colour follows severity.
   - name: teams-platform-alerts
     type: msteams
-    webhook_url: ${TEAMS_WEBHOOK_URL}
+    webhook_url: "${TEAMS_WEBHOOK_URL}"
     filters:
       severity_min: warning
       match:
@@ -46,4 +49,4 @@ outputs:
   # so operators have a single chronological feed. No filter ⇒ match-all.
   - name: ops-firehose
     type: webhook
-    url: ${OPS_FIREHOSE_URL}
+    url: "${OPS_FIREHOSE_URL}"
