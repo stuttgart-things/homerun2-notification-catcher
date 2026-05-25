@@ -19,6 +19,7 @@ Two layers:
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs but Notifier.Send is skipped — matching outputs log "would send" at INFO instead. |
 
 Additional env vars referenced by the YAML config (e.g. `TEAMS_WEBHOOK_URL`) must resolve at startup or load fails.
 
@@ -77,4 +78,14 @@ TEAMS_WEBHOOK_URL=https://teams.example/... \
     --tags infra,storage
 ```
 
-Each output prints one line: `OK`, `SKIPPED (filters did not match)`, or `FAIL: <error>`.
+Each output prints one line: `OK`, `SKIPPED (filters did not match)`, `DRY-RUN`, or `FAIL: <error>`.
+
+## Dry-run
+
+Set `DRY_RUN=true` (process-wide) or pass `--dry-run` to the smoke subcommand to verify routing without firing any webhooks. Filter evaluation still runs — matching outputs log
+
+```text
+INFO dry-run: would send  output=teams-platform-alerts  title="disk almost full"  severity=warning  system=kubernetes
+```
+
+at INFO and the smoke result prints `DRY-RUN` instead of `OK`. Skipped outputs (filters didn't match) are reported the same way in both modes. This is the recommended first-reconciliation mode after a config change — flip it on, watch logs, confirm routing, then flip it back.

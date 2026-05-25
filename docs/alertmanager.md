@@ -111,6 +111,13 @@ filters:
 
 ## Smoke test (post-deploy)
 
+> **Tip — first reconciliation:** set `DRY_RUN=true` on the catcher's
+> Deployment before flipping the Alertmanager receiver. The catcher still
+> consumes the stream and runs filter evaluation but logs `dry-run: would
+> send  output=… title=… severity=…` instead of POSTing to Teams. Verify
+> routing in `kubectl logs`, then remove the env var (or set it to `false`)
+> and reconcile again.
+
 Verify the chain end-to-end:
 
 ```bash

@@ -13,8 +13,15 @@ import (
 // Dispatcher fans a homerun.Message out to every configured output whose
 // filters match. One Dispatcher is built per process from NotifyConfig and is
 // safe for concurrent calls — each underlying Notifier is too.
+//
+// DryRun, when true, makes Dispatch log "would have sent" at INFO and return
+// DispatchResult{DryRun: true, Err: nil} for matching outputs *without* invoking
+// Notifier.Send. Filter evaluation runs as normal so skipped outputs still
+// report Skipped: true. Useful for the first reconciliation after a config
+// change — flip DRY_RUN=true, watch logs, confirm routing, then flip back.
 type Dispatcher struct {
 	outputs []boundOutput
+	DryRun  bool
 }
 
 type boundOutput struct {
@@ -28,7 +35,8 @@ type boundOutput struct {
 type DispatchResult struct {
 	Output  string
 	Skipped bool  // filters didn't match
-	Err     error // nil on success, non-nil if Send failed
+	DryRun  bool  // filters matched but Send was skipped (Dispatcher.DryRun=true)
+	Err     error // nil on success/skipped/dry-run, non-nil if Send failed
 }
 
 // NewDispatcher binds each OutputConfig to a concrete Notifier. httpClient may
@@ -78,11 +86,25 @@ type DispatcherEntry struct {
 // synchronous: each Notifier.Send is invoked in order, and per-output failures
 // are logged but do not abort the rest. The returned slice mirrors the output
 // order so callers can map results back to config entries.
+//
+// When Dispatcher.DryRun is true, matching outputs skip the Notifier.Send call
+// and log at INFO instead. Skipped outputs (filters didn't match) are reported
+// the same way in both modes.
 func (d *Dispatcher) Dispatch(ctx context.Context, msg homerun.Message) []DispatchResult {
 	results := make([]DispatchResult, 0, len(d.outputs))
 	for _, o := range d.outputs {
 		if !Matches(o.filters, msg) {
 			results = append(results, DispatchResult{Output: o.name, Skipped: true})
+			continue
+		}
+		if d.DryRun {
+			slog.Info("dry-run: would send",
+				"output", o.name,
+				"title", msg.Title,
+				"severity", msg.Severity,
+				"system", msg.System,
+			)
+			results = append(results, DispatchResult{Output: o.name, DryRun: true})
 			continue
 		}
 		err := o.notifier.Send(ctx, msg)

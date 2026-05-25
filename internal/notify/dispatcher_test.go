@@ -117,3 +117,79 @@ func TestNewDispatcher_NilConfig(t *testing.T) {
 		t.Error("expected error on nil config")
 	}
 }
+
+func TestDispatcher_DryRun_SkipsSendForMatchingOutputs(t *testing.T) {
+	teams := &stubNotifier{}
+	pd := &stubNotifier{}
+
+	d := NewDispatcherWithNotifiers(
+		DispatcherEntry{
+			Name:     "teams",
+			Filters:  config.OutputFilters{SeverityMin: "warning"},
+			Notifier: teams,
+		},
+		DispatcherEntry{
+			Name:     "pagerduty",
+			Filters:  config.OutputFilters{SeverityMin: "critical"},
+			Notifier: pd,
+		},
+	)
+	d.DryRun = true
+
+	results := d.Dispatch(context.Background(), homerun.Message{
+		Title:    "disk almost full",
+		Severity: "warning",
+	})
+
+	if teams.called != 0 {
+		t.Errorf("teams.Send should not be called in dry-run, called=%d", teams.called)
+	}
+	if pd.called != 0 {
+		t.Errorf("pd.Send should not be called in dry-run (also filter-skipped), called=%d", pd.called)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	// teams: filters matched → dry-run reported
+	if !results[0].DryRun || results[0].Skipped || results[0].Err != nil {
+		t.Errorf("teams result wrong: %+v", results[0])
+	}
+	// pagerduty: filters didn't match → still skipped
+	if results[1].DryRun || !results[1].Skipped {
+		t.Errorf("pagerduty should be skipped (filter), got: %+v", results[1])
+	}
+}
+
+func TestDispatcher_DryRun_FailingNotifierIsNotInvoked(t *testing.T) {
+	// A would-be-failing notifier should never be called in dry-run, so the
+	// caller can't tell anything is broken downstream. That's by design —
+	// dry-run is for verifying routing/filters, not the downstream service.
+	bad := &stubNotifier{err: errors.New("would have failed")}
+
+	d := NewDispatcherWithNotifiers(
+		DispatcherEntry{Name: "bad", Notifier: bad},
+	)
+	d.DryRun = true
+
+	results := d.Dispatch(context.Background(), homerun.Message{Title: "x"})
+
+	if bad.called != 0 {
+		t.Errorf("Notifier.Send must not be invoked in dry-run, called=%d", bad.called)
+	}
+	if len(results) != 1 || !results[0].DryRun || results[0].Err != nil {
+		t.Errorf("expected dry-run result with no error, got %+v", results)
+	}
+}
+
+func TestDispatcher_DryRun_DefaultIsFalse(t *testing.T) {
+	// New dispatchers should default to live, not dry-run — otherwise
+	// forgetting to set the flag would silently drop messages.
+	d := NewDispatcherWithNotifiers(
+		DispatcherEntry{Name: "live", Notifier: &stubNotifier{}},
+	)
+	if d.DryRun {
+		t.Error("Dispatcher.DryRun should default to false")
+	}
+}
