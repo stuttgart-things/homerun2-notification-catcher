@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.0.1...v2.1.0) (2026-05-25)
+
+
+### Features
+
+* **kcl:** default redisStream to messages, not alerts ([#21](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/21)) ([79aa966](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/79aa9668cfbae83ecfa9395aebd4fcb71ab6c5da))
+
 ## [2.0.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.0.0...v2.0.1) (2026-05-25)
 
 
