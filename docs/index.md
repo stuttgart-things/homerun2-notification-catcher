@@ -25,5 +25,6 @@ Adaptive Card formatting and routing live in version-controlled Go code in this 
 
 1. **[Configuration](configuration.md)** — env vars and the YAML routing config.
 2. **[Deployment](deployment.md)** — KCL manifests, Flux integration, SOPS-backed webhook secrets.
-3. **[CI/CD](cicd.md)** — workflows, image build/scan, kustomize OCI release pipeline.
-4. **[Preview environments](preview-environments.md)** — per-PR namespaces.
+3. **[Alertmanager integration](alertmanager.md)** — wire kube-prometheus-stack alerts through omni-pitcher into the catcher.
+4. **[CI/CD](cicd.md)** — workflows, image build/scan, kustomize OCI release pipeline.
+5. **[Preview environments](preview-environments.md)** — per-PR namespaces.
