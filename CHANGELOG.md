@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.3.0...v1.4.0) (2026-05-25)
+
+
+### Features
+
+* DRY_RUN mode — log which outputs would fire without sending ([472d23e](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/472d23ed93fde05d19f0bcb95313ccd0df07b522))
+
 # [1.3.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.2.0...v1.3.0) (2026-05-25)
 
 
