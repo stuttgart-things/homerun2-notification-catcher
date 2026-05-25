@@ -20,7 +20,7 @@ GitHub Actions in `.github/workflows/`:
 3. ko builds and pushes a container image to `ghcr.io/stuttgart-things/homerun2-notification-catcher:<version>`.
 4. Dagger renders the kustomize base from `kcl/` against `tests/kcl-deploy-profile.yaml` and pushes it to `ghcr.io/stuttgart-things/homerun2-notification-catcher-kustomize:<version>`.
 5. Renovate bumps `HOMERUN2_NOTIFICATION_CATCHER_VERSION` in the cluster repo's Flux component on the next scan.
-6. Flux reconciles, pulls the new OCI tag, applies the manifests with `substituteFrom` from the cluster's SOPS-encrypted `homerun2-flux-secrets`.
+6. Flux reconciles, pulls the new OCI tag, applies the manifests with `substituteFrom` from the cluster's SOPS-encrypted `homerun2-secrets`.
 
 ## Local sanity
 

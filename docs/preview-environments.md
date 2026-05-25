@@ -29,4 +29,4 @@ Every PR gets a per-namespace preview deployment driven by the kustomize OCI tag
 ## Caveats
 
 - `push-kustomize-pr.yaml` only runs when files under `kcl/**` or `tests/kcl-*.yaml` change — Go-only PRs don't re-publish the kustomize base. The preview deploy on the cluster pulls the latest matching tag.
-- Webhook secrets in the preview namespace come from the same cluster-side `homerun2-flux-secrets` as production — be careful with smoke fixtures that would page real on-call.
+- Webhook secrets in the preview namespace come from the same cluster-side `homerun2-secrets` as production — be careful with smoke fixtures that would page real on-call.

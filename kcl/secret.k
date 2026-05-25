@@ -9,7 +9,7 @@ Secrets for homerun2-notification-catcher.
                     by the Deployment so each key becomes a container env
                     var (e.g. TEAMS_WEBHOOK_URL). Values are expected to be
                     Flux substitution tokens — Flux rewrites them at apply
-                    time from the cluster's homerun2-flux-secrets Secret.
+                    time from the cluster's homerun2-secrets Secret.
                     Skipped when config.outputSecrets is empty.
 
 Both use stringData so Flux substituteFrom can rewrite the placeholder text

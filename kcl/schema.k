@@ -41,7 +41,7 @@ schema NotificationCatcher:
     # Output secrets — emitted into a Secret <name>-secrets and envFrom'd by
     # the Deployment. Values are expected to be Flux substitution tokens
     # (${TEAMS_WEBHOOK_URL}, ${PAGERDUTY_TOKEN}, …) which Flux rewrites at
-    # apply time from the cluster's homerun2-flux-secrets Secret.
+    # apply time from the cluster's homerun2-secrets Secret.
     outputSecrets: {str:str} = {}
 
     # Extra env vars folded into the env ConfigMap (envFrom)

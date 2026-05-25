@@ -55,11 +55,11 @@ data:
 
 ### `<name>-secrets` Secret
 
-`stringData` map with one key per output secret. Values are single-dollar Flux substitution tokens — Flux rewrites them at apply time from the cluster-side `homerun2-flux-secrets` Secret. The Deployment `envFrom`s this Secret, so each key becomes a container env var.
+`stringData` map with one key per output secret. Values are single-dollar Flux substitution tokens — Flux rewrites them at apply time from the cluster-side `homerun2-secrets` Secret. The Deployment `envFrom`s this Secret, so each key becomes a container env var.
 
 ```yaml
 stringData:
-  TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL}     # Flux substitutes from homerun2-flux-secrets
+  TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL}     # Flux substitutes from homerun2-secrets
 ```
 
 ### Resulting pod state
@@ -108,7 +108,7 @@ spec:
       # x-release-please-end
     substituteFrom:
       - kind: Secret
-        name: homerun2-flux-secrets
+        name: homerun2-secrets
 ---
 apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: OCIRepository
@@ -122,7 +122,7 @@ spec:
     tag: ${HOMERUN2_NOTIFICATION_CATCHER_VERSION}
 ```
 
-The `homerun2-flux-secrets` Secret in the cluster (SOPS-encrypted in the cluster repo) holds the real values for `TEAMS_WEBHOOK_URL`, `REDIS_PASSWORD`, etc. Flux's `substituteFrom` rewrites the placeholders in this repo's manifests at apply time.
+The `homerun2-secrets` Secret in the cluster (SOPS-encrypted in the cluster repo) holds the real values for `TEAMS_WEBHOOK_URL`, `REDIS_PASSWORD`, etc. Flux's `substituteFrom` rewrites the placeholders in this repo's manifests at apply time.
 
 ### Scaling outputs
 
@@ -146,7 +146,7 @@ To add a new output type that needs a secret env var (e.g. PagerDuty):
        Authorization: "Token token=$${PAGERDUTY_TOKEN}"
    ```
 
-3. Add `PAGERDUTY_TOKEN` to the cluster's `homerun2-flux-secrets` SOPS Secret.
+3. Add `PAGERDUTY_TOKEN` to the cluster's `homerun2-secrets` SOPS Secret.
 
 Cut a release; Flux picks up the new OCI tag; the new output starts firing.
 
