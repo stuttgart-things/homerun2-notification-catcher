@@ -131,6 +131,7 @@ Branch-per-issue with PR and merge to main.
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
 | `LOG_FORMAT` | `json` | Log format: `json` or `text` |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs as usual but matching outputs log "would send" at INFO and skip the Notifier.Send call. Use on first reconciliation after a config change to verify routing without spamming Teams. |
 | (referenced by YAML) | — | e.g. `TEAMS_WEBHOOK_URL`, custom webhook tokens — must resolve at startup |
 
 ## Smoke test (CLI)
@@ -147,7 +148,13 @@ TEAMS_WEBHOOK_URL=https://teams.example/... \
     --tags infra,storage
 ```
 
-Prints one line per output (`OK` / `SKIPPED` / `FAIL: …`). Useful for verifying a new output or filter before deploying.
+Prints one line per output (`OK` / `SKIPPED` / `DRY-RUN` / `FAIL: …`). Useful for verifying a new output or filter before deploying.
+
+Add `--dry-run` (or set `DRY_RUN=true`) to test routing without firing any webhooks:
+
+```bash
+notification-catcher smoke --config notify.yaml --severity warning --dry-run
+```
 
 ## Testing
 

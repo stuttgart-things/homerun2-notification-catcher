@@ -65,7 +65,11 @@ func runServer() error {
 	if err != nil {
 		return err
 	}
-	slog.Info("notify dispatcher loaded", "outputs", dispatcher.OutputNames())
+	dispatcher.DryRun = boolEnv("DRY_RUN")
+	slog.Info("notify dispatcher loaded",
+		"outputs", dispatcher.OutputNames(),
+		"dry_run", dispatcher.DryRun,
+	)
 
 	dispatchHandler := func(cm models.CaughtMessage) {
 		ctx, cancel := context.WithTimeout(context.Background(), dispatchTimeout)
@@ -147,6 +151,7 @@ func runSmoke(args []string) error {
 		assigneeName    = fs.String("assignee-name", "", "Message.AssigneeName")
 		assigneeAddress = fs.String("assignee-address", "", "Message.AssigneeAddress")
 		timeoutFlag     = fs.Duration("timeout", 30*time.Second, "total timeout for the fan-out")
+		dryRun          = fs.Bool("dry-run", boolEnv("DRY_RUN"), "log which outputs would fire but do not invoke any Notifier")
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -166,6 +171,7 @@ func runSmoke(args []string) error {
 	if err != nil {
 		return err
 	}
+	dispatcher.DryRun = *dryRun
 
 	msg := homerun.Message{
 		Title:           *title,
@@ -197,6 +203,8 @@ func printSmokeResults(results []notify.DispatchResult) error {
 		switch {
 		case r.Skipped:
 			fmt.Printf("- %s: SKIPPED (filters did not match)\n", r.Output)
+		case r.DryRun:
+			fmt.Printf("- %s: DRY-RUN (filters matched; Send not invoked)\n", r.Output)
 		case r.Err != nil:
 			failed++
 			fmt.Printf("- %s: FAIL: %v\n", r.Output, r.Err)
@@ -208,4 +216,17 @@ func printSmokeResults(results []notify.DispatchResult) error {
 		return fmt.Errorf("%d output(s) failed", failed)
 	}
 	return nil
+}
+
+// boolEnv parses a permissive truthy env var. Accepts "true", "1", "yes", "on"
+// (case-insensitive). Anything else, including empty, is false. Used for
+// DRY_RUN — the cost of misreading the value is too high to require a strict
+// "true"/"false" only.
+func boolEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
