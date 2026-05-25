@@ -58,7 +58,7 @@ alertmanager:
               authorization:
                 type: Bearer
                 # SOPS-encrypted in the flux repo; populated via Helm values
-                # or substituteFrom from homerun2-flux-secrets.
+                # or substituteFrom from homerun2-secrets.
                 credentials: ${OMNI_PITCHER_TOKEN}
 
     route:

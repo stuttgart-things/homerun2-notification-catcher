@@ -7,7 +7,7 @@
 # Two-layer secret pattern:
 #   * outputSecrets values are Flux substitution tokens (${TEAMS_WEBHOOK_URL})
 #     so Flux's substituteFrom rewrites them at apply time using values from
-#     the cluster's homerun2-flux-secrets Secret.
+#     the cluster's homerun2-secrets Secret.
 #   * notifyConfig uses $${TEAMS_WEBHOOK_URL} (double-dollar). Flux collapses
 #     $$ → $, leaving ${TEAMS_WEBHOOK_URL} in the rendered ConfigMap. At pod
 #     startup the catcher's own env-interpolation resolves it against the
