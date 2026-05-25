@@ -23,7 +23,7 @@ schema NotificationCatcher:
     # Redis (consumer-group source)
     redisAddr: str = "redis-stack.homerun2.svc.cluster.local"
     redisPort: int | str = "6379"
-    redisStream: str = "alerts"
+    redisStream: str = "messages"
     redisPassword: str = ""
     consumerGroup: str = "homerun2-notification-catcher"
 
