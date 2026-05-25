@@ -4,6 +4,13 @@ on:
   pull_request:
     branches:
       - main
+    # Only run when something kustomize-relevant changes. Avoids spurious
+    # failures on PRs that don't touch KCL — and lets this workflow stay
+    # dormant until issue #8 adds the kcl/ directory and the deploy profile.
+    paths:
+      - 'kcl/**'
+      - 'tests/kcl-*.yaml'
+      - '.github/workflows/push-kustomize-pr.yaml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}

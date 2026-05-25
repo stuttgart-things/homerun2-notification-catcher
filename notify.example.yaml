@@ -1,0 +1,49 @@
+# notification-catcher routing config
+#
+# Loaded once at startup from $CONFIG_PATH (default
+# /etc/notification-catcher/config.yaml).
+#
+# Every incoming homerun.Message is fanned out to each output whose filters
+# match. Filters AND across fields; list-valued filters (tags_contain,
+# message_contains) OR within the list. Empty filters block ⇒ output matches
+# everything.
+#
+# Secrets are interpolated from environment variables — ${VAR} is replaced at
+# load time and a missing or empty value is a fatal startup error.
+#
+# Severity rank (low → high):
+#   debug < info < success < warning < critical = error
+#
+# Recognised match fields:
+#   severity, system, author, title, assigneename, assigneeaddress
+# Use tags_contain / message_contains for substring matches on Tags / Message.
+
+outputs:
+  # MS Teams channel — Power Automate "post-message-in-chat" webhook.
+  # Fires for warning+ messages from the kubernetes system tagged with infra
+  # or storage. Card colour follows severity.
+  - name: teams-platform-alerts
+    type: msteams
+    webhook_url: ${TEAMS_WEBHOOK_URL}
+    filters:
+      severity_min: warning
+      match:
+        system: kubernetes
+      tags_contain: [infra, storage]
+
+  # Generic JSON webhook (e.g. PagerDuty Events v2, custom internal handler).
+  # Fires for critical messages from any system.
+  - name: pagerduty-events
+    type: webhook
+    url: https://events.pagerduty.com/v2/enqueue
+    method: POST
+    headers:
+      Authorization: "Token token=${PAGERDUTY_TOKEN}"
+    filters:
+      severity_min: critical
+
+  # Catch-all log channel — every message hits this Slack-compatible webhook
+  # so operators have a single chronological feed. No filter ⇒ match-all.
+  - name: ops-firehose
+    type: webhook
+    url: ${OPS_FIREHOSE_URL}
