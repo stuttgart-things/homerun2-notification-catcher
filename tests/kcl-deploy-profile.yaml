@@ -18,7 +18,7 @@ config.namespace: homerun2
 
 config.redisAddr: redis-stack.homerun2.svc.cluster.local
 config.redisPort: "6379"
-config.redisStream: alerts
+config.redisStream: messages
 config.consumerGroup: homerun2-notification-catcher
 config.redisPassword: "${REDIS_PASSWORD}"
 

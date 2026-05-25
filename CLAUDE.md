@@ -127,7 +127,7 @@ Branch-per-issue with PR and merge to main.
 | `REDIS_ADDR` | `localhost` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | *(empty)* | Redis password |
-| `REDIS_STREAM` | `alerts` | Redis stream to consume from |
+| `REDIS_STREAM` | `messages` | Redis stream to consume from |
 | `REDIS_STREAMS` | *(empty)* | Comma-separated streams (overrides `REDIS_STREAM`) |
 | `CONSUMER_GROUP` | `homerun2-notification-catcher` | Consumer group name |
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
