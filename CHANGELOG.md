@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.4.0...v1.4.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* quote $${VAR} placeholders in notifyConfig + README tryout section ([ca44346](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/ca44346dd5374c60775ec518ec3fb2c8539fd7c9))
+
 # [1.4.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.3.0...v1.4.0) (2026-05-25)
 
 
