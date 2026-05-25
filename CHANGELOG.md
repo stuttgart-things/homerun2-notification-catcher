@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.0.0...v2.0.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* **kcl:** emit Redis password via data not stringData ([#20](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/20)) ([965da33](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/965da332acc1c850eda9c865c32c5f58bc0ba302))
+
 # [2.0.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.4.1...v2.0.0) (2026-05-25)
 
 
