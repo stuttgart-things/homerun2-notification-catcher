@@ -4,15 +4,14 @@
 # render-kustomize-base task renders kcl/ against this profile and publishes
 # the result as the kustomize OCI base.
 #
-# Two-layer secret pattern:
-#   * outputSecrets values are Flux substitution tokens (${TEAMS_WEBHOOK_URL})
-#     so Flux's substituteFrom rewrites them at apply time using values from
-#     the cluster's homerun2-secrets Secret.
-#   * notifyConfig uses $${TEAMS_WEBHOOK_URL} (double-dollar). Flux collapses
-#     $$ → $, leaving ${TEAMS_WEBHOOK_URL} in the rendered ConfigMap. At pod
-#     startup the catcher's own env-interpolation resolves it against the
-#     envFrom'd Secret. The webhook URL never lands in plaintext in the
-#     ConfigMap.
+# outputSecrets values are Flux substitution tokens (${TEAMS_WEBHOOK_URL})
+# so Flux's substituteFrom rewrites them at apply time using values from
+# the cluster's homerun2-secrets Secret.
+#
+# The routing config (/etc/notification-catcher/config.yaml) is NOT shipped
+# by the chart — the Deployment mounts a ConfigMap named
+# `<name>-notify` that the caller (cluster overlay) must provide.
+# See docs/deployment.md and notify.example.yaml.
 
 config.image: ghcr.io/stuttgart-things/homerun2-notification-catcher:latest
 config.namespace: homerun2
@@ -31,18 +30,5 @@ config.logLevel: info
 config.outputSecrets:
   TEAMS_WEBHOOK_URL: "${TEAMS_WEBHOOK_URL}"
 
-# $${TEAMS_WEBHOOK_URL} → ${TEAMS_WEBHOOK_URL} after Flux substitution.
-# The catcher resolves it against env at runtime (config.LoadNotifyConfig).
-#
-# The placeholder is wrapped in double quotes so the catcher's text-level
-# env-interp inserts the URL *inside* a quoted YAML scalar. Power Automate
-# webhook URLs contain `:443/`, `?`, `&`, `=`, `%` which would otherwise
-# trip the YAML parser ("block sequence entries are not allowed in this
-# context"). Quoting keeps the scalar valid regardless of URL content.
-config.notifyConfig: |
-  outputs:
-    - name: teams-platform-alerts
-      type: msteams
-      webhook_url: "$${TEAMS_WEBHOOK_URL}"
-      filters:
-        severity_min: warning
+# Routing config is caller-supplied — see docs/deployment.md.
+config.notifyConfig: ""

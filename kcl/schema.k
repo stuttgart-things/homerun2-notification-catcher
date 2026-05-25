@@ -31,11 +31,14 @@ schema NotificationCatcher:
     logFormat: str = "json"
     logLevel: str = "info"
 
-    # Routing config YAML — full content of /etc/notification-catcher/config.yaml.
-    # Use $${VAR} (double-dollar) for any value that should be interpolated by
-    # the catcher from env vars at runtime — Flux's substituteFrom collapses
-    # $${VAR} → ${VAR} in the applied manifest, then the catcher resolves
-    # ${VAR} against its environment. See README + docs/deployment.md.
+    # Routing config YAML. Default empty — the caller (cluster overlay)
+    # supplies a ConfigMap named <name>-notify with key `config.yaml`, which
+    # the Deployment always mounts at /etc/notification-catcher/config.yaml.
+    # See docs/deployment.md.
+    #
+    # Setting this to a non-empty string also emits the ConfigMap inline
+    # from the chart, intended for self-contained dev/test renders only —
+    # in production it collides with the caller-supplied CM.
     notifyConfig: str = ""
 
     # Output secrets — emitted into a Secret <name>-secrets and envFrom'd by

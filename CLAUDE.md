@@ -40,6 +40,8 @@ Each caught `homerun.Message` is handed to two `MessageHandler`s: the `LogHandle
 
 Loaded once at startup from `$CONFIG_PATH` (default `/etc/notification-catcher/config.yaml`). A missing or invalid file is a fatal startup error. `${VAR}` references in the YAML are interpolated from env vars; a missing/empty value is also a fatal error.
 
+The Deployment always mounts a ConfigMap named `<name>-notify` (key `config.yaml`) at that path, but **the chart does not emit it** — the caller (cluster overlay) provides it, mirroring the `homerun2-git-pitcher-watch-config` pattern. See `docs/deployment.md`.
+
 ```yaml
 outputs:
   - name: teams-platform-alerts
