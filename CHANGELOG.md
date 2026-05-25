@@ -1,3 +1,16 @@
+# [2.0.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.4.1...v2.0.0) (2026-05-25)
+
+
+* feat(kcl)!: decouple notify ConfigMap from the chart ([#19](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/19)) ([8c9582d](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/8c9582d62c6d3a9937f02dace6b6e69d1e9f40de))
+
+
+### BREAKING CHANGES
+
+* callers that relied on the chart's inline `<name>-notify`
+ConfigMap must now supply their own. See docs/deployment.md.
+
+Co-authored-by: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
 ## [1.4.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.4.0...v1.4.1) (2026-05-25)
 
 
