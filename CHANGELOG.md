@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.1.0...v1.2.0) (2026-05-25)
+
+
+### Features
+
+* YAML-driven multi-sink dispatcher + smoke subcommand ([31e721a](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/31e721a122b0be7bf522619f940d8b28317691d2))
+
 # [1.1.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v1.0.0...v1.1.0) (2026-05-24)
 
 
