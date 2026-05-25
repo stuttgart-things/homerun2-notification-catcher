@@ -1,0 +1,42 @@
+# homerun2-notification-catcher KCL deploy profile.
+#
+# Values consumed by kcl/labels.k via option("config.*"). The Dagger
+# render-kustomize-base task renders kcl/ against this profile and publishes
+# the result as the kustomize OCI base.
+#
+# Two-layer secret pattern:
+#   * outputSecrets values are Flux substitution tokens (${TEAMS_WEBHOOK_URL})
+#     so Flux's substituteFrom rewrites them at apply time using values from
+#     the cluster's homerun2-flux-secrets Secret.
+#   * notifyConfig uses $${TEAMS_WEBHOOK_URL} (double-dollar). Flux collapses
+#     $$ → $, leaving ${TEAMS_WEBHOOK_URL} in the rendered ConfigMap. At pod
+#     startup the catcher's own env-interpolation resolves it against the
+#     envFrom'd Secret. The webhook URL never lands in plaintext in the
+#     ConfigMap.
+
+config.image: ghcr.io/stuttgart-things/homerun2-notification-catcher:latest
+config.namespace: homerun2
+
+config.redisAddr: redis-stack.homerun2.svc.cluster.local
+config.redisPort: "6379"
+config.redisStream: alerts
+config.consumerGroup: homerun2-notification-catcher
+config.redisPassword: "${REDIS_PASSWORD}"
+
+config.logFormat: json
+config.logLevel: info
+
+# Flux substitutes ${TEAMS_WEBHOOK_URL} at apply time. The resulting Secret
+# is envFrom'd by the Deployment so the catcher sees a real URL on stdin env.
+config.outputSecrets:
+  TEAMS_WEBHOOK_URL: "${TEAMS_WEBHOOK_URL}"
+
+# $${TEAMS_WEBHOOK_URL} → ${TEAMS_WEBHOOK_URL} after Flux substitution.
+# The catcher resolves it against env at runtime (config.LoadNotifyConfig).
+config.notifyConfig: |
+  outputs:
+    - name: teams-platform-alerts
+      type: msteams
+      webhook_url: $${TEAMS_WEBHOOK_URL}
+      filters:
+        severity_min: warning
