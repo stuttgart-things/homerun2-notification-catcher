@@ -7,52 +7,114 @@ import (
 	"testing"
 )
 
-func TestInterpolateEnv_Replaces(t *testing.T) {
-	t.Setenv("TEAMS_WEBHOOK_URL", "https://example/hook")
-	t.Setenv("PD_KEY", "abc123")
-
-	in := "url: ${TEAMS_WEBHOOK_URL}\nkey: ${PD_KEY}\n"
-	out, err := interpolateEnv(in)
+func TestLoadNotifyConfig_PlaceholderInCommentIsIgnored(t *testing.T) {
+	// Regression for the env-interp footgun (issue #23): a ${VAR} reference in
+	// a YAML comment used to be substituted as if it were a real placeholder,
+	// crashing the catcher on startup when the named var was unset. After the
+	// node-tree-walk refactor, comments are never visited.
+	_ = os.Unsetenv("NEVER_SET_ANYWHERE")
+	t.Setenv("TEAMS_WEBHOOK_URL", "https://teams.example/hook")
+	p := writeTmp(t, `
+outputs:
+  - name: teams-alerts
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL}"   # or set ${NEVER_SET_ANYWHERE} for a dedicated secret
+`)
+	cfg, err := LoadNotifyConfig(p)
 	if err != nil {
-		t.Fatalf("interp: %v", err)
+		t.Fatalf("comment-only placeholder should not error: %v", err)
 	}
-	want := "url: https://example/hook\nkey: abc123\n"
-	if out != want {
-		t.Errorf("got %q want %q", out, want)
+	if cfg.Outputs[0].WebhookURL != "https://teams.example/hook" {
+		t.Errorf("real value placeholder should still resolve: %+v", cfg.Outputs[0])
 	}
 }
 
-func TestInterpolateEnv_MissingVarsAreCollected(t *testing.T) {
+func TestLoadNotifyConfig_MissingVarsAreCollected(t *testing.T) {
 	_ = os.Unsetenv("FOO_X")
 	_ = os.Unsetenv("FOO_Y")
+	t.Setenv("OK_VAR", "ok")
 
-	_, err := interpolateEnv("a: ${FOO_X}\nb: ${FOO_Y}\nc: ${FOO_X}\n")
+	p := writeTmp(t, `
+outputs:
+  - name: webhook-a
+    type: webhook
+    url: ${FOO_X}
+    headers:
+      X-Auth: ${FOO_Y}
+      X-Tag: ${OK_VAR}
+  - name: webhook-b
+    type: webhook
+    url: ${FOO_X}
+`)
+	_, err := LoadNotifyConfig(p)
 	if err == nil {
 		t.Fatal("expected error for unresolved vars")
 	}
 	msg := err.Error()
 	if !strings.Contains(msg, "FOO_X") || !strings.Contains(msg, "FOO_Y") {
-		t.Errorf("error should list missing vars, got: %s", msg)
+		t.Errorf("error should list all distinct missing vars, got: %s", msg)
+	}
+	if strings.Contains(msg, "OK_VAR") {
+		t.Errorf("resolvable vars should not appear in error, got: %s", msg)
 	}
 }
 
-func TestInterpolateEnv_EmptyValueIsMissing(t *testing.T) {
+func TestLoadNotifyConfig_EmptyEnvValueIsMissing(t *testing.T) {
 	t.Setenv("EMPTY_VAR", "")
-	_, err := interpolateEnv("x: ${EMPTY_VAR}\n")
+	p := writeTmp(t, `
+outputs:
+  - name: w
+    type: webhook
+    url: ${EMPTY_VAR}
+`)
+	_, err := LoadNotifyConfig(p)
 	if err == nil {
 		t.Fatal("empty env value should be treated as missing")
 	}
 }
 
-func TestInterpolateEnv_NonReferenceCharsLeftAlone(t *testing.T) {
-	// $5 and $variable (no braces) must not be touched.
-	in := "price: $5\nshell: $HOME\n"
-	out, err := interpolateEnv(in)
+func TestLoadNotifyConfig_NonReferenceCharsLeftAlone(t *testing.T) {
+	// $5 and $HOME (without curly braces) must not be touched.
+	t.Setenv("HOME", "/this-should-be-ignored")
+	p := writeTmp(t, `
+outputs:
+  - name: w
+    type: webhook
+    url: https://example/$5/path
+    headers:
+      X-Shell: $HOME
+`)
+	cfg, err := LoadNotifyConfig(p)
 	if err != nil {
-		t.Fatalf("interp: %v", err)
+		t.Fatalf("load: %v", err)
 	}
-	if out != in {
-		t.Errorf("non-${} references should be left alone, got %q", out)
+	if got := cfg.Outputs[0].URL; got != "https://example/$5/path" {
+		t.Errorf("non-${} reference in URL was rewritten, got %q", got)
+	}
+	if got := cfg.Outputs[0].Headers["X-Shell"]; got != "$HOME" {
+		t.Errorf("non-${} reference in header was rewritten, got %q", got)
+	}
+}
+
+func TestLoadNotifyConfig_PlaceholderInHeadersValueResolves(t *testing.T) {
+	// Headers map values are a real use case for env-interpolated secrets
+	// (auth tokens). Walking only struct-known fields could miss them — the
+	// node-walker reaches every scalar regardless of nesting.
+	t.Setenv("PD_TOKEN", "sek-r3t")
+	p := writeTmp(t, `
+outputs:
+  - name: w
+    type: webhook
+    url: https://hooks.example/pd
+    headers:
+      Authorization: "Token token=${PD_TOKEN}"
+`)
+	cfg, err := LoadNotifyConfig(p)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := cfg.Outputs[0].Headers["Authorization"]; got != "Token token=sek-r3t" {
+		t.Errorf("header value not interpolated: %q", got)
 	}
 }
 
