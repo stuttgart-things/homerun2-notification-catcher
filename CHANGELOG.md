@@ -1,3 +1,10 @@
+## [2.1.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.1.0...v2.1.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* **config:** walk YAML node tree for env interpolation, ignore comments ([#24](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/24)) ([32f9ef6](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/32f9ef6855dc62b4c1b97e10e5828aea20873259)), closes [#23](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/23)
+
 # [2.1.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.0.1...v2.1.0) (2026-05-25)
 
 
