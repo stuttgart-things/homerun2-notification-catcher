@@ -68,21 +68,28 @@ var matchFields = map[string]struct{}{
 // LoadNotifyConfig reads, interpolates, and validates the YAML at path.
 //
 // Errors include the file path so the operator can find the problem. ${VAR}
-// references must resolve to a non-empty env value or load fails.
+// references in scalar values must resolve to a non-empty env value or load
+// fails. Comments are not interpolated — documenting an optional secret like
+// `# or set ${ALT_VAR} for a dedicated webhook` is safe even when ALT_VAR is
+// unset.
 func LoadNotifyConfig(path string) (*NotifyConfig, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("notify config: read %s: %w", path, err)
 	}
 
-	interpolated, err := interpolateEnv(string(raw))
-	if err != nil {
+	var root yaml.Node
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return nil, fmt.Errorf("notify config: parse %s: %w", path, err)
+	}
+
+	if err := interpolateNode(&root); err != nil {
 		return nil, fmt.Errorf("notify config: %s: %w", path, err)
 	}
 
 	var cfg NotifyConfig
-	if err := yaml.Unmarshal([]byte(interpolated), &cfg); err != nil {
-		return nil, fmt.Errorf("notify config: parse %s: %w", path, err)
+	if err := root.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("notify config: decode %s: %w", path, err)
 	}
 
 	if err := Validate(&cfg); err != nil {
@@ -103,29 +110,48 @@ func LoadNotifyConfigPath() (*NotifyConfig, error) {
 
 var envRefPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-// interpolateEnv replaces ${VAR} with os.Getenv(VAR). Missing or empty values
-// are collected and returned in a single deduplicated error so operators see
-// every misconfig at once instead of fixing one var per restart.
-func interpolateEnv(s string) (string, error) {
+// interpolateNode walks the YAML node tree in place and replaces ${VAR}
+// placeholders in scalar values with os.Getenv(VAR). Comments live on
+// Node.{Head,Line,Foot}Comment fields and are never visited, so documentation
+// like `# also set ${ALT_VAR}` is inert — earlier raw-text interpolation
+// would have trapped on it.
+//
+// Missing or empty env values are collected and returned in a single
+// deduplicated error so operators see every misconfig at once instead of
+// fixing one var per restart.
+func interpolateNode(root *yaml.Node) error {
 	missing := map[string]struct{}{}
-	out := envRefPattern.ReplaceAllStringFunc(s, func(match string) string {
-		name := envRefPattern.FindStringSubmatch(match)[1]
-		v, ok := os.LookupEnv(name)
-		if !ok || v == "" {
-			missing[name] = struct{}{}
-			return match
-		}
-		return v
-	})
-	if len(missing) > 0 {
-		names := make([]string, 0, len(missing))
-		for n := range missing {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		return "", fmt.Errorf("unresolved env vars: %s", strings.Join(names, ", "))
+	walkAndInterpolate(root, missing)
+	if len(missing) == 0 {
+		return nil
 	}
-	return out, nil
+	names := make([]string, 0, len(missing))
+	for n := range missing {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return fmt.Errorf("unresolved env vars: %s", strings.Join(names, ", "))
+}
+
+func walkAndInterpolate(n *yaml.Node, missing map[string]struct{}) {
+	if n == nil {
+		return
+	}
+	if n.Kind == yaml.ScalarNode {
+		n.Value = envRefPattern.ReplaceAllStringFunc(n.Value, func(match string) string {
+			name := envRefPattern.FindStringSubmatch(match)[1]
+			v, ok := os.LookupEnv(name)
+			if !ok || v == "" {
+				missing[name] = struct{}{}
+				return match
+			}
+			return v
+		})
+		return
+	}
+	for _, c := range n.Content {
+		walkAndInterpolate(c, missing)
+	}
 }
 
 // Validate enforces invariants the dispatcher relies on. Errors collect
