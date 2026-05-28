@@ -1,3 +1,10 @@
+## [2.1.2](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.1.1...v2.1.2) (2026-05-28)
+
+
+### Bug Fixes
+
+* **kcl:** stop emitting Namespace from kustomize OCI ([6dc22d7](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/6dc22d76616557feed24f2856947cee33bd1d44f)), closes [#25](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/25)
+
 ## [2.1.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.1.0...v2.1.1) (2026-05-26)
 
 
