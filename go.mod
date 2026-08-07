@@ -3,9 +3,10 @@ module github.com/stuttgart-things/homerun2-notification-catcher
 go 1.25.5
 
 require (
-	github.com/redis/go-redis/v9 v9.19.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stuttgart-things/homerun-library/v3 v3.1.0
 	github.com/stuttgart-things/redisqueue v0.0.0-20230628084515-1d31f7874df7
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -213,6 +214,5 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
