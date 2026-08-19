@@ -37,7 +37,7 @@ func (m *Dagger) Build(
 	// +default=""
 	ldflags string,
 	// +optional
-	// +default="1.25.5"
+	// +default="1.26.6"
 	goVersion string,
 	// +optional
 	// +default="linux"
@@ -91,7 +91,7 @@ func (m *Dagger) BuildAndTestBinary(
 	ctx context.Context,
 	source *dagger.Directory,
 	// +optional
-	// +default="1.25.5"
+	// +default="1.26.6"
 	goVersion string,
 	// +optional
 	// +default="linux"
@@ -209,7 +209,7 @@ func (m *Dagger) IntegrationTest(
 	// JSON file containing test messages (same format as omni-pitcher smoke tests)
 	messagesFile *dagger.File,
 	// +optional
-	// +default="1.25.5"
+	// +default="1.26.6"
 	// Go version for building the catcher
 	goVersion string,
 	// +optional
