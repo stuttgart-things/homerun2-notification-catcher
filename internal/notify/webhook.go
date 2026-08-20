@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	homerun "github.com/stuttgart-things/homerun-library/v3"
+	homerun "github.com/stuttgart-things/homerun-library/v4"
 )
 
 // WebhookNotifier POSTs the raw homerun.Message JSON to an arbitrary HTTP

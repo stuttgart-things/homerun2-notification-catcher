@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	homerun "github.com/stuttgart-things/homerun-library/v3"
+	homerun "github.com/stuttgart-things/homerun-library/v4"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
@@ -130,7 +130,7 @@ func buildCard(msg homerun.Message) models.AdaptiveCard {
 		})
 	}
 
-	if url := strings.TrimSpace(msg.Url); url != "" {
+	if url := strings.TrimSpace(msg.URL); url != "" {
 		card.Actions = []models.CardAction{{
 			Type:  "Action.OpenUrl",
 			Title: "Open",

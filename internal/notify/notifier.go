@@ -7,7 +7,7 @@ package notify
 import (
 	"context"
 
-	homerun "github.com/stuttgart-things/homerun-library/v3"
+	homerun "github.com/stuttgart-things/homerun-library/v4"
 )
 
 // Notifier dispatches a single homerun.Message to one external channel.

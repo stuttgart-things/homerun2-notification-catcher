@@ -8,7 +8,7 @@ homerun2-notification-catcher — Go consumer for the homerun2 pipeline. Reads `
 
 - **Language**: Go 1.25.5
 - **Consumer**: Redis Streams via `redisqueue` (consumer groups)
-- **Library**: `homerun-library/v3` for shared types and helpers
+- **Library**: `homerun-library/v4` for shared types and helpers
 - **Build**: ko (`.ko.yaml`), no Dockerfile
 - **CI**: Dagger modules (`dagger/main.go`), Taskfile
 - **Deploy**: KCL manifests (`kcl/`), Kustomize, Kubernetes (added in #8)
