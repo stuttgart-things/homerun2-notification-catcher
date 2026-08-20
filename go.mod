@@ -5,6 +5,7 @@ go 1.26.6
 require (
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stuttgart-things/homerun-library/v3 v3.2.0
+	github.com/stuttgart-things/homerun-library/v4 v4.0.0
 	github.com/stuttgart-things/redisqueue v0.0.0-20230628084515-1d31f7874df7
 	gopkg.in/yaml.v3 v3.0.1
 )
