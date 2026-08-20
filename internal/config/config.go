@@ -74,4 +74,10 @@ func SetupLogging() {
 	}
 
 	slog.SetDefault(slog.New(handler))
+
+	// homerun-library is silent by default as of v3.2.0. Routing it through the
+	// same logger means its records arrive in this service's format and at this
+	// service's level, instead of the pterm-decorated stdout writes it used to
+	// interleave into the log stream.
+	homerun.SetLogger(slog.Default())
 }
