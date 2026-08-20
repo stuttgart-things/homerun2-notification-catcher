@@ -17,7 +17,7 @@ import (
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
 
-	homerun "github.com/stuttgart-things/homerun-library/v3"
+	homerun "github.com/stuttgart-things/homerun-library/v4"
 )
 
 // Build-time variables set via ldflags
@@ -147,7 +147,7 @@ func runSmoke(args []string) error {
 		author          = fs.String("author", "notification-catcher smoke", "Message.Author")
 		system          = fs.String("system", "", "Message.System")
 		tags            = fs.String("tags", "", "Message.Tags (comma-separated)")
-		url             = fs.String("url", "", "Message.Url")
+		url             = fs.String("url", "", "Message.URL")
 		assigneeName    = fs.String("assignee-name", "", "Message.AssigneeName")
 		assigneeAddress = fs.String("assignee-address", "", "Message.AssigneeAddress")
 		timeoutFlag     = fs.Duration("timeout", 30*time.Second, "total timeout for the fan-out")
@@ -180,7 +180,7 @@ func runSmoke(args []string) error {
 		Author:          *author,
 		System:          *system,
 		Tags:            *tags,
-		Url:             *url,
+		URL:             *url,
 		AssigneeName:    *assigneeName,
 		AssigneeAddress: *assigneeAddress,
 		Timestamp:       time.Now().Format(time.RFC3339),

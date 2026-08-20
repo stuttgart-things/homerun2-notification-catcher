@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/stuttgart-things/homerun-library/v3 v3.2.0
+	github.com/stuttgart-things/homerun-library/v4 v4.0.0
 	github.com/stuttgart-things/redisqueue v0.0.0-20230628084515-1d31f7874df7
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -14,7 +14,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
-	github.com/RediSearch/redisearch-go v1.1.1 // indirect
+	github.com/RediSearch/redisearch-go/v2 v2.1.1 // indirect
 	github.com/andygrunwald/go-jira v1.16.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect

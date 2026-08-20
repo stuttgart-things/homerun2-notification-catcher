@@ -3,7 +3,7 @@ package notify
 import (
 	"strings"
 
-	homerun "github.com/stuttgart-things/homerun-library/v3"
+	homerun "github.com/stuttgart-things/homerun-library/v4"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 )
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	homerun "github.com/stuttgart-things/homerun-library/v3"
+	homerun "github.com/stuttgart-things/homerun-library/v4"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
@@ -47,7 +47,7 @@ func TestBuildEnvelope_Shape(t *testing.T) {
 		System:    "kubernetes",
 		Tags:      "infra,storage",
 		Timestamp: "2026-05-24T10:00:00Z",
-		Url:       "https://grafana.example/d/abc",
+		URL:       "https://grafana.example/d/abc",
 	}
 	env := BuildEnvelope(msg)
 
@@ -165,7 +165,7 @@ func TestBuildEnvelope_JSONMarshalsCleanly(t *testing.T) {
 	env := BuildEnvelope(homerun.Message{
 		Title:    "boom",
 		Severity: "critical",
-		Url:      "https://x",
+		URL:      "https://x",
 	})
 	b, err := json.Marshal(env)
 	if err != nil {
