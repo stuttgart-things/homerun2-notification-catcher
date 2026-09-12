@@ -82,6 +82,25 @@ func runServer() error {
 	consumerGroup := homerun.GetEnv("CONSUMER_GROUP", "homerun2-notification-catcher")
 	consumerName := homerun.GetEnv("CONSUMER_NAME", "")
 
+	// Canceled on SIGINT/SIGTERM: stops the Redis wait below, then the catcher.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// The consumer's preflight dials Redis exactly once, so a Redis that is
+	// still starting used to end the process and crashloop the pod (#40).
+	// Wait for it with bounded backoff for REDIS_STARTUP_TIMEOUT (default 120s).
+	startupTimeout, err := homerun.LoadRedisStartupTimeout()
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+	if err := homerun.WaitForRedisContext(ctx, redisConfig, startupTimeout); err != nil {
+		if ctx.Err() != nil {
+			slog.Info("shutdown requested while waiting for redis")
+			return nil
+		}
+		return fmt.Errorf("redis not reachable (startup_timeout %s): %w", startupTimeout, err)
+	}
+
 	c, err := catcher.NewRedisCatcher(redisConfig, streams, consumerGroup, consumerName,
 		catcher.LogHandler(),
 		dispatchHandler,
@@ -97,9 +116,6 @@ func runServer() error {
 		"consumer_group", consumerGroup,
 	)
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	if errCh := c.Errors(); errCh != nil {
 		go func() {
 			for err := range errCh {
@@ -109,7 +125,7 @@ func runServer() error {
 	}
 
 	go func() {
-		<-quit
+		<-ctx.Done()
 		slog.Info("shutting down catcher")
 		c.Shutdown()
 	}()
