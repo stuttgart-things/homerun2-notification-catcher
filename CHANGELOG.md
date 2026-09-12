@@ -1,3 +1,10 @@
+## [3.0.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.0...v3.0.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* wait for Redis at startup instead of exiting, and stop waiting on SIGTERM ([3106063](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/31060633c5a112b888b36441d0c493956e497c2c)), closes [#40](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/40)
+
 # [3.0.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v2.1.2...v3.0.0) (2026-08-20)
 
 
