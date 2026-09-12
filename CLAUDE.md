@@ -131,6 +131,7 @@ Branch-per-issue with PR and merge to main.
 | `REDIS_STREAMS` | *(empty)* | Comma-separated streams (overrides `REDIS_STREAM`) |
 | `CONSUMER_GROUP` | `homerun2-notification-catcher` | Consumer group name |
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
+| `REDIS_STARTUP_TIMEOUT` | `120s` | How long startup retries Redis before exiting (Go duration); SIGINT/SIGTERM ends the wait with exit 0 |
 | `LOG_FORMAT` | `json` | Log format: `json` or `text` |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs as usual but matching outputs log "would send" at INFO and skip the Notifier.Send call. Use on first reconciliation after a config change to verify routing without spamming Teams. |
