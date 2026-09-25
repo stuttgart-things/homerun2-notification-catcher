@@ -17,12 +17,32 @@ Two layers:
 | `REDIS_STREAMS` | *(empty)* | Comma-separated streams (overrides `REDIS_STREAM`) |
 | `CONSUMER_GROUP` | `homerun2-notification-catcher` | Consumer group name |
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
+| `CONSUMER_START_ID` | `$` | Where a **newly created** consumer group starts: `$` (only new messages), `0` (whole stream), or a stream ID. An existing group keeps its position |
 | `REDIS_STARTUP_TIMEOUT` | `120s` | How long startup retries Redis before exiting (Go duration); SIGINT/SIGTERM ends the wait with exit 0 |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs but Notifier.Send is skipped — matching outputs log "would send" at INFO instead. |
 
 Additional env vars referenced by the YAML config (e.g. `TEAMS_WEBHOOK_URL`) must resolve at startup or load fails.
+
+### Where a new instance starts reading
+
+A notification is about *now*. Replaying a stream's history would post every
+old alert or result to a real channel again, so the catcher never does that
+unless asked:
+
+- **New consumer group** (first start, a new instance, a newly added stream,
+  or after the group was deleted): the group is created at `$`, and only
+  messages pitched **after** it exists are handled. Set `CONSUMER_START_ID=0`
+  to replay the whole stream instead, or a stream ID to start after that entry.
+- **Existing consumer group** (a restart): the group keeps its position, so
+  messages pitched while the catcher was down are still delivered.
+  `CONSUMER_START_ID` has no effect on an existing group.
+
+Messages are handled **one at a time, in stream order**. A burst (two alerts,
+or a point and the match-winning point, pitched milliseconds apart) reaches the
+channel in the order it happened. The cost: one slow or unreachable output
+delays the messages behind it, up to the dispatch timeout per message.
 
 ## YAML routing config
 

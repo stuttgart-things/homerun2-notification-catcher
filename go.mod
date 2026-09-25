@@ -3,6 +3,7 @@ module github.com/stuttgart-things/homerun2-notification-catcher
 go 1.26.6
 
 require (
+	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stuttgart-things/homerun-library/v4 v4.3.0
 	github.com/stuttgart-things/redisqueue v0.0.0-20230628084515-1d31f7874df7
@@ -50,6 +51,7 @@ require (
 	github.com/tsuyoshiwada/go-gitcmd v0.0.0-20180205145712-5f1f5f9475df // indirect
 	github.com/urfave/cli/v2 v2.24.3 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect

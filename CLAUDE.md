@@ -131,6 +131,7 @@ Branch-per-issue with PR and merge to main.
 | `REDIS_STREAMS` | *(empty)* | Comma-separated streams (overrides `REDIS_STREAM`) |
 | `CONSUMER_GROUP` | `homerun2-notification-catcher` | Consumer group name |
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
+| `CONSUMER_START_ID` | `$` | Where a **newly created** consumer group starts: `$` (only new messages), `0` (whole stream), or a stream ID. An existing group keeps its position |
 | `REDIS_STARTUP_TIMEOUT` | `120s` | How long startup retries Redis before exiting (Go duration); SIGINT/SIGTERM ends the wait with exit 0 |
 | `LOG_FORMAT` | `json` | Log format: `json` or `text` |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |

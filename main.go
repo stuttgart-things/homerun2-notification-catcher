@@ -81,6 +81,7 @@ func runServer() error {
 	streams := config.LoadStreams()
 	consumerGroup := homerun.GetEnv("CONSUMER_GROUP", "homerun2-notification-catcher")
 	consumerName := homerun.GetEnv("CONSUMER_NAME", "")
+	consumerStartID := homerun.GetEnv("CONSUMER_START_ID", catcher.DefaultStartID)
 
 	// Canceled on SIGINT/SIGTERM: stops the Redis wait below, then the catcher.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -101,7 +102,7 @@ func runServer() error {
 		return fmt.Errorf("redis not reachable (startup_timeout %s): %w", startupTimeout, err)
 	}
 
-	c, err := catcher.NewRedisCatcher(redisConfig, streams, consumerGroup, consumerName,
+	c, err := catcher.NewRedisCatcher(redisConfig, streams, consumerGroup, consumerName, consumerStartID,
 		catcher.LogHandler(),
 		dispatchHandler,
 	)
@@ -114,6 +115,7 @@ func runServer() error {
 		"redis_port", redisConfig.Port,
 		"streams", streams,
 		"consumer_group", consumerGroup,
+		"consumer_start_id", consumerStartID,
 	)
 
 	if errCh := c.Errors(); errCh != nil {
