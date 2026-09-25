@@ -77,9 +77,9 @@ func newRedisCatcher(
 	handlers ...MessageHandler,
 ) (*RedisCatcher, error) {
 	closeClients := func() {
-		consumerClient.Close()
+		_ = consumerClient.Close()
 		if payloadClient != consumerClient {
-			payloadClient.Close()
+			_ = payloadClient.Close()
 		}
 	}
 
