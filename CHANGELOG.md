@@ -1,3 +1,11 @@
+## [3.0.2](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.1...v3.0.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* check the Close errors when the catcher fails to start ([93f2d7c](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/93f2d7cc66daf1ba8e08b6b9c942fd93dd5f28e9)), closes [#43](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/43)
+* start new consumer groups at $ and handle messages in stream order ([0c94354](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/0c94354f29767f9e5c00ef1838598f74c454ebcd)), closes [stuttgart-things/flux#431](https://github.com/stuttgart-things/flux/issues/431) [#43](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/43)
+
 ## [3.0.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.0...v3.0.1) (2026-09-12)
 
 
