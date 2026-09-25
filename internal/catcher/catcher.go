@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -28,18 +29,74 @@ type Catcher interface {
 // full payloads from Redis JSON.
 type RedisCatcher struct {
 	consumer    *redisqueue.Consumer
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	streams     []string
 	handlers    []MessageHandler
 }
 
+// DefaultStartID is where a consumer group created by the catcher starts
+// reading: "$" delivers only messages pitched after the group exists. A
+// notification is about now: replaying a stream's backlog would post every
+// old alert or result to a real channel again, so it is never the default.
+const DefaultStartID = "$"
+
+// blockingTimeout bounds each XREADGROUP call, and so how long Shutdown waits
+// for the poller; tests shorten it.
+var blockingTimeout = 5 * time.Second
+
+var startIDPattern = regexp.MustCompile(`^(\$|\d+(-\d+)?)$`)
+
 // NewRedisCatcher creates a consumer connected to the given Redis streams.
-func NewRedisCatcher(rc homerun.RedisConfig, streams []string, groupName, consumerName string, handlers ...MessageHandler) (*RedisCatcher, error) {
+// If streams is empty, it falls back to rc.Stream (legacy single-stream mode).
+//
+// startID only applies to consumer groups that do not exist yet: "$" (the
+// default when empty) starts after the current end of the stream, "0" replays
+// the whole stream, and any other stream ID starts after that entry. An
+// existing group keeps its position, so messages pitched while the catcher
+// was down are still delivered.
+func NewRedisCatcher(
+	rc homerun.RedisConfig,
+	streams []string,
+	groupName, consumerName, startID string,
+	handlers ...MessageHandler,
+) (*RedisCatcher, error) {
+	addr := fmt.Sprintf("%s:%s", rc.Addr, rc.Port)
+	options := &redis.Options{Addr: addr, Password: rc.Password}
+
+	return newRedisCatcher(redis.NewClient(options), redis.NewClient(options),
+		rc.Stream, streams, groupName, consumerName, startID, handlers...)
+}
+
+// newRedisCatcher wires a catcher to the given clients: consumerClient drives
+// the stream consumer, payloadClient resolves message payloads.
+func newRedisCatcher(
+	consumerClient, payloadClient redis.UniversalClient,
+	legacyStream string,
+	streams []string,
+	groupName, consumerName, startID string,
+	handlers ...MessageHandler,
+) (*RedisCatcher, error) {
+	closeClients := func() {
+		_ = consumerClient.Close()
+		if payloadClient != consumerClient {
+			_ = payloadClient.Close()
+		}
+	}
+
 	if len(streams) == 0 {
-		if rc.Stream == "" {
+		if legacyStream == "" {
+			closeClients()
 			return nil, fmt.Errorf("no streams configured: pass streams or set rc.Stream")
 		}
-		streams = []string{rc.Stream}
+		streams = []string{legacyStream}
+	}
+
+	if startID == "" {
+		startID = DefaultStartID
+	}
+	if !startIDPattern.MatchString(startID) {
+		closeClients()
+		return nil, fmt.Errorf("invalid consumer start ID %q: use \"$\", \"0\" or a stream ID", startID)
 	}
 
 	if consumerName == "" {
@@ -47,36 +104,32 @@ func NewRedisCatcher(rc homerun.RedisConfig, streams []string, groupName, consum
 		consumerName = hostname
 	}
 
-	addr := fmt.Sprintf("%s:%s", rc.Addr, rc.Port)
-
 	consumer, err := redisqueue.NewConsumerWithOptions(&redisqueue.ConsumerOptions{
-		Name:        consumerName,
-		GroupName:   groupName,
-		BufferSize:  100,
-		Concurrency: 10,
-		RedisOptions: &redisqueue.RedisOptions{
-			Addr:     addr,
-			Password: rc.Password,
-		},
+		Name:            consumerName,
+		GroupName:       groupName,
+		BlockingTimeout: blockingTimeout,
+		BufferSize:      100,
+		// One worker handles a stream's messages in stream order. A burst
+		// (two alerts, or a point and the match-winning point, pitched
+		// milliseconds apart) must reach the channel in the order it
+		// happened; ten workers could post them the other way round.
+		Concurrency: 1,
+		RedisClient: consumerClient,
 	})
 	if err != nil {
+		closeClients()
 		return nil, fmt.Errorf("failed to create redis consumer: %w", err)
 	}
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: rc.Password,
-	})
-
 	c := &RedisCatcher{
 		consumer:    consumer,
-		redisClient: redisClient,
+		redisClient: payloadClient,
 		streams:     streams,
 		handlers:    handlers,
 	}
 
 	for _, stream := range streams {
-		consumer.Register(stream, c.handleMessage)
+		consumer.RegisterWithLastID(stream, startID, c.handleMessage)
 	}
 
 	return c, nil
