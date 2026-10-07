@@ -1,3 +1,10 @@
+## [3.0.3](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.2...v3.0.3) (2026-10-07)
+
+
+### Bug Fixes
+
+* **teams:** give the Adaptive Card a plain-text fallbackText ([3e2df09](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/3e2df090c0d75fcc9194e2579e3c0191944256c6)), closes [stuttgart-things/stuttgart-things#3490](https://github.com/stuttgart-things/stuttgart-things/issues/3490)
+
 ## [3.0.2](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.1...v3.0.2) (2026-09-25)
 
 
