@@ -109,6 +109,51 @@ func TestBuildEnvelope_Shape(t *testing.T) {
 	}
 }
 
+// A Teams client or notification preview that cannot render the card shows
+// only "Card - access it on https://go.skype.com/cards.unsupported" unless the
+// card carries fallbackText (stuttgart-things/stuttgart-things#3490).
+func TestBuildEnvelope_FallbackText(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  homerun.Message
+		want string
+	}{
+		{
+			name: "severity, title and body",
+			msg:  homerun.Message{Title: "Disk almost full", Message: "node01: 92% used", Severity: "warning"},
+			want: "[warning] Disk almost full: node01: 92% used",
+		},
+		{
+			name: "no severity",
+			msg:  homerun.Message{Title: "hello", Message: "world"},
+			want: "hello: world",
+		},
+		{
+			name: "body falls back to the title and is not repeated",
+			msg:  homerun.Message{Title: "ping", Severity: "info"},
+			want: "[info] ping",
+		},
+		{
+			name: "nothing set",
+			msg:  homerun.Message{},
+			want: defaultTitle,
+		},
+		{
+			name: "whitespace is trimmed",
+			msg:  homerun.Message{Title: "  Resolved: X  ", Message: "  gone  ", Severity: "  success "},
+			want: "[success] Resolved: X: gone",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			card := BuildEnvelope(tc.msg).Attachments[0].Content
+			if card.FallbackText != tc.want {
+				t.Errorf("fallbackText = %q, want %q", card.FallbackText, tc.want)
+			}
+		})
+	}
+}
+
 func TestBuildEnvelope_OmitsEmptyFields(t *testing.T) {
 	msg := homerun.Message{
 		Title:    "ping",
@@ -177,6 +222,7 @@ func TestBuildEnvelope_JSONMarshalsCleanly(t *testing.T) {
 		`"contentType":"application/vnd.microsoft.card.adaptive"`,
 		`"$schema":"http://adaptivecards.io/schemas/adaptive-card.json"`,
 		`"type":"AdaptiveCard"`,
+		`"fallbackText":"[critical] boom"`,
 		`"Action.OpenUrl"`,
 	} {
 		if !strings.Contains(s, want) {
