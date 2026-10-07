@@ -19,11 +19,15 @@ type TeamsAttachment struct {
 // AdaptiveCard is a minimal subset of the Adaptive Card v1.4 schema — enough
 // to render a homerun.Message as a styled card with optional URL action.
 type AdaptiveCard struct {
-	Schema  string        `json:"$schema"`
-	Type    string        `json:"type"`
-	Version string        `json:"version"`
-	Body    []CardElement `json:"body"`
-	Actions []CardAction  `json:"actions,omitempty"`
+	Schema  string `json:"$schema"`
+	Type    string `json:"type"`
+	Version string `json:"version"`
+	// FallbackText is the plain text a host shows when it cannot render the
+	// card: notification previews and some Teams clients, which otherwise
+	// show only "Card - access it on https://go.skype.com/cards.unsupported".
+	FallbackText string        `json:"fallbackText,omitempty"`
+	Body         []CardElement `json:"body"`
+	Actions      []CardAction  `json:"actions,omitempty"`
 }
 
 // CardElement is one node in the card body. We model only the subset we emit

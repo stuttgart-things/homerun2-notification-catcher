@@ -117,10 +117,11 @@ func buildCard(msg homerun.Message) models.AdaptiveCard {
 	}
 
 	card := models.AdaptiveCard{
-		Schema:  adaptiveCardSchema,
-		Type:    "AdaptiveCard",
-		Version: adaptiveCardVersion,
-		Body:    []models.CardElement{header},
+		Schema:       adaptiveCardSchema,
+		Type:         "AdaptiveCard",
+		Version:      adaptiveCardVersion,
+		FallbackText: buildFallbackText(msg.Severity, title, body),
+		Body:         []models.CardElement{header},
 	}
 
 	if facts := buildFacts(msg); len(facts) > 0 {
@@ -139,6 +140,21 @@ func buildCard(msg homerun.Message) models.AdaptiveCard {
 	}
 
 	return card
+}
+
+// buildFallbackText renders the card as one plain-text line for hosts that
+// cannot render Adaptive Cards: "[severity] title: body". The severity prefix
+// is dropped when empty, and the body when it only repeats the title (which
+// buildCard does when the message has no body of its own).
+func buildFallbackText(severity, title, body string) string {
+	text := title
+	if body != title {
+		text += ": " + body
+	}
+	if s := strings.TrimSpace(severity); s != "" {
+		text = "[" + s + "] " + text
+	}
+	return text
 }
 
 // buildFacts builds the FactSet rows, skipping any field whose value is empty
