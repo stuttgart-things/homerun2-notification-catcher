@@ -1,3 +1,10 @@
+# [3.1.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.3...v3.1.0) (2026-10-18)
+
+
+### Features
+
+* tags_exclude filter and configurable Teams card facts ([b902209](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/b902209678bca66f44ab9d1f5a31bb191bf96bf1))
+
 ## [3.0.3](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.2...v3.0.3) (2026-10-07)
 
 
