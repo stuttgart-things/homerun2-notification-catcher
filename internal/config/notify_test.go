@@ -268,3 +268,39 @@ func TestSeverityRank(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_CardFacts(t *testing.T) {
+	teams := func(facts ...CardFactConfig) OutputConfig {
+		return OutputConfig{Name: "x", Type: OutputTypeTeams, WebhookURL: "https://a", Card: CardConfig{Facts: facts}}
+	}
+	cases := []struct {
+		name string
+		out  OutputConfig
+		want string // "" = valid
+	}{
+		{"tag", teams(CardFactConfig{Title: "Sets", Tag: "sets"}), ""},
+		{"field", teams(CardFactConfig{Title: "Time", Field: "Timestamp"}), ""},
+		{"no title", teams(CardFactConfig{Tag: "sets"}), "title is required"},
+		{"neither", teams(CardFactConfig{Title: "Sets"}), "exactly one of tag or field"},
+		{"both", teams(CardFactConfig{Title: "Sets", Tag: "sets", Field: "system"}), "exactly one of tag or field"},
+		{"unknown field", teams(CardFactConfig{Title: "Host", Field: "hostname"}), "hostname"},
+		{"webhook", OutputConfig{
+			Name: "x", Type: OutputTypeWebhook, URL: "https://a",
+			Card: CardConfig{Facts: []CardFactConfig{{Title: "Sets", Tag: "sets"}}},
+		}, "only supported"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Validate(&NotifyConfig{Outputs: []OutputConfig{tc.out}})
+			if tc.want == "" {
+				if err != nil {
+					t.Errorf("expected valid, got %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}

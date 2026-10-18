@@ -131,7 +131,7 @@ func (d *Dispatcher) OutputNames() []string {
 func buildNotifier(o config.OutputConfig, client *http.Client) (Notifier, error) {
 	switch o.Type {
 	case config.OutputTypeTeams:
-		return NewTeamsNotifier(o.WebhookURL, client), nil
+		return NewTeamsNotifier(o.WebhookURL, client).WithCard(o.Card), nil
 	case config.OutputTypeWebhook:
 		return NewWebhookNotifier(o.URL, o.Method, o.Headers, client), nil
 	default:

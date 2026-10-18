@@ -52,6 +52,7 @@ outputs:
       match:                            # AND across keys, case-insensitive
         system: kubernetes
       tags_contain: [infra, storage]    # OR within the list
+      tags_exclude: [demo=1]            # none of these may appear
       message_contains: [disk, OOM]
 
   - name: webhook-generic

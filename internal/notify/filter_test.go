@@ -136,3 +136,19 @@ func TestMatches_AllFiltersANDed(t *testing.T) {
 		t.Error("system mismatch → should not match")
 	}
 }
+
+func TestMatches_TagsExclude(t *testing.T) {
+	demo := homerun.Message{Tags: "transition=match_won,winner=a,demo=1"}
+	real := homerun.Message{Tags: "transition=match_won,winner=a"}
+	f := config.OutputFilters{
+		TagsContain: []string{"transition=match_won"},
+		TagsExclude: []string{"demo=1"},
+	}
+
+	if Matches(f, demo) {
+		t.Error("an excluded tag should drop the message")
+	}
+	if !Matches(f, real) {
+		t.Error("without the excluded tag the message should match")
+	}
+}
