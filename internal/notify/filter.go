@@ -15,9 +15,10 @@ import (
 //     on msg, case-insensitive on both side
 //   - tags_contain: at least one substring is present in msg.Tags (OR within
 //     the list); the filter as a whole still AND-combines with the others
+//   - tags_exclude: no listed substring is present in msg.Tags
 //   - message_contains: at least one substring is present in msg.Message
 //
-// All four rules AND together. Empty rules pass trivially, so an empty
+// All five rules AND together. Empty rules pass trivially, so an empty
 // OutputFilters matches every message.
 func Matches(f config.OutputFilters, msg homerun.Message) bool {
 	if !severityAtLeast(msg.Severity, f.SeverityMin) {
@@ -29,6 +30,9 @@ func Matches(f config.OutputFilters, msg homerun.Message) bool {
 		}
 	}
 	if len(f.TagsContain) > 0 && !anySubstring(msg.Tags, f.TagsContain) {
+		return false
+	}
+	if len(f.TagsExclude) > 0 && anySubstring(msg.Tags, f.TagsExclude) {
 		return false
 	}
 	if len(f.MessageContains) > 0 && !anySubstring(msg.Message, f.MessageContains) {
@@ -63,6 +67,14 @@ func fieldEquals(msg homerun.Message, key, want string) bool {
 
 func getField(msg homerun.Message, key string) string {
 	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "message":
+		return msg.Message
+	case "tags":
+		return msg.Tags
+	case "timestamp":
+		return msg.Timestamp
+	case "url":
+		return msg.URL
 	case "severity":
 		return msg.Severity
 	case "system":

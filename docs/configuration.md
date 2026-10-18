@@ -70,14 +70,37 @@ outputs:
 
 ### Filter semantics
 
-All filter rules AND together. List-valued rules (`tags_contain`, `message_contains`) OR within the list. Empty filters block ⇒ output matches everything.
+All filter rules AND together. List-valued rules (`tags_contain`, `tags_exclude`, `message_contains`) OR within the list. Empty filters block ⇒ output matches everything.
 
 | Field | Semantics |
 |---|---|
 | `severity_min` | message rank ≥ rule rank. Unknown severities on messages count as `info`. |
 | `match` | exact equality on a `homerun.Message` field, case-insensitive on key + value. Allowed keys: `severity`, `system`, `author`, `title`, `assigneename`, `assigneeaddress`. |
 | `tags_contain` | any listed substring appears in `Tags` (case-insensitive). |
+| `tags_exclude` | no listed substring appears in `Tags` (case-insensitive) -- e.g. `[demo=1]` keeps demo traffic out. |
 | `message_contains` | any listed substring appears in `Message`. |
+
+### Card facts (msteams)
+
+By default a Teams card shows the title, the message and a FactSet of severity, system, author, tags and time. `card.facts` replaces that FactSet row for row, so a producer that packs its data into `key=value` tags gets one readable row per value:
+
+```yaml
+  - name: teams-tabletennis-results
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL}"
+    filters:
+      match: { system: tabletennis }
+      tags_contain: [transition=match_won]
+      tags_exclude: [demo=1]
+    card:
+      facts:
+        - { title: Spieler A, tag: player_a }   # value of player_a=... in Tags
+        - { title: Spieler B, tag: player_b }
+        - { title: Sätze, tag: sets }
+        - { title: Zeit, field: timestamp }     # a message field
+```
+
+Each row sets `title` and exactly one of `tag` (key looked up in the comma-separated `Tags`, case-insensitive) or `field` (`severity`, `system`, `author`, `title`, `message`, `tags`, `timestamp`, `url`, `assigneename`, `assigneeaddress`). A row whose value is empty is left out. `card` is rejected on a `webhook` output.
 
 ### Env-var interpolation
 

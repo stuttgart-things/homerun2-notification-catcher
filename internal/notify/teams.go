@@ -11,6 +11,7 @@ import (
 	"time"
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
@@ -30,6 +31,7 @@ const (
 type TeamsNotifier struct {
 	webhookURL string
 	client     *http.Client
+	card       config.CardConfig
 }
 
 // NewTeamsNotifier builds a notifier that posts to webhookURL. Pass nil for
@@ -41,6 +43,12 @@ func NewTeamsNotifier(webhookURL string, client *http.Client) *TeamsNotifier {
 	return &TeamsNotifier{webhookURL: webhookURL, client: client}
 }
 
+// WithCard sets the output's card config (custom facts) and returns n.
+func (n *TeamsNotifier) WithCard(card config.CardConfig) *TeamsNotifier {
+	n.card = card
+	return n
+}
+
 // Send renders msg into an Adaptive Card and POSTs it to the configured webhook.
 // Non-2xx responses are returned as errors with the response body included.
 func (n *TeamsNotifier) Send(ctx context.Context, msg homerun.Message) error {
@@ -48,7 +56,7 @@ func (n *TeamsNotifier) Send(ctx context.Context, msg homerun.Message) error {
 		return fmt.Errorf("teams: webhook URL is empty")
 	}
 
-	envelope := BuildEnvelope(msg)
+	envelope := BuildEnvelopeWithCard(msg, n.card)
 	body, err := json.Marshal(envelope)
 	if err != nil {
 		return fmt.Errorf("teams: marshal envelope: %w", err)
@@ -77,16 +85,22 @@ func (n *TeamsNotifier) Send(ctx context.Context, msg homerun.Message) error {
 // BuildEnvelope maps a homerun.Message to the Power Automate Adaptive-Card
 // envelope. Pure function — exported for testing.
 func BuildEnvelope(msg homerun.Message) models.TeamsEnvelope {
+	return BuildEnvelopeWithCard(msg, config.CardConfig{})
+}
+
+// BuildEnvelopeWithCard is BuildEnvelope with an output's card config: its
+// facts, when set, replace the default FactSet.
+func BuildEnvelopeWithCard(msg homerun.Message, card config.CardConfig) models.TeamsEnvelope {
 	return models.TeamsEnvelope{
 		Type: "message",
 		Attachments: []models.TeamsAttachment{{
 			ContentType: adaptiveCardContentType,
-			Content:     buildCard(msg),
+			Content:     buildCard(msg, card),
 		}},
 	}
 }
 
-func buildCard(msg homerun.Message) models.AdaptiveCard {
+func buildCard(msg homerun.Message, cfg config.CardConfig) models.AdaptiveCard {
 	title := strings.TrimSpace(msg.Title)
 	if title == "" {
 		title = defaultTitle
@@ -124,7 +138,11 @@ func buildCard(msg homerun.Message) models.AdaptiveCard {
 		Body:         []models.CardElement{header},
 	}
 
-	if facts := buildFacts(msg); len(facts) > 0 {
+	facts := buildFacts(msg)
+	if len(cfg.Facts) > 0 {
+		facts = buildConfiguredFacts(msg, cfg.Facts)
+	}
+	if len(facts) > 0 {
 		card.Body = append(card.Body, models.CardElement{
 			Type:  "FactSet",
 			Facts: facts,
@@ -172,6 +190,35 @@ func buildFacts(msg homerun.Message) []models.CardFact {
 	add("Tags", msg.Tags)
 	add("Time", msg.Timestamp)
 	return facts
+}
+
+// buildConfiguredFacts builds the FactSet rows an output's card config asks
+// for, in its order, skipping any row whose value is empty.
+func buildConfiguredFacts(msg homerun.Message, rows []config.CardFactConfig) []models.CardFact {
+	facts := make([]models.CardFact, 0, len(rows))
+	for _, r := range rows {
+		value := getField(msg, r.Field)
+		if strings.TrimSpace(r.Tag) != "" {
+			value = tagValue(msg.Tags, r.Tag)
+		}
+		if v := strings.TrimSpace(value); v != "" {
+			facts = append(facts, models.CardFact{Title: r.Title, Value: v})
+		}
+	}
+	return facts
+}
+
+// tagValue returns the value of the first `key=value` entry in the
+// comma-separated tags whose key equals key (case-insensitive), or "".
+func tagValue(tags, key string) string {
+	key = strings.TrimSpace(key)
+	for _, t := range strings.Split(tags, ",") {
+		k, v, ok := strings.Cut(t, "=")
+		if ok && strings.EqualFold(strings.TrimSpace(k), key) {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // severityToStyle maps a homerun.Message severity to an Adaptive Card

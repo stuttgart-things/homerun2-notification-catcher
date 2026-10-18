@@ -30,16 +30,39 @@ type OutputConfig struct {
 	Method     string            `yaml:"method,omitempty"`
 	Headers    map[string]string `yaml:"headers,omitempty"`
 	Filters    OutputFilters     `yaml:"filters,omitempty"`
+	// Card shapes the Adaptive Card of an msteams output. Unset: the default
+	// card (title, message, a FactSet of severity/system/author/tags/time).
+	Card CardConfig `yaml:"card,omitempty"`
+}
+
+// CardConfig customises the Teams card. Facts, when set, replaces the default
+// FactSet row for row -- a producer that packs its data into key=value tags
+// (zaehlwerk's player_a=..., sets=...) gets one readable row per value instead
+// of the raw tag string.
+type CardConfig struct {
+	Facts []CardFactConfig `yaml:"facts,omitempty"`
+}
+
+// CardFactConfig is one FactSet row: Title, and the value from exactly one of
+// Tag (the value of `<tag>=` in the message's comma-separated tags) or Field
+// (a message field, see cardFields). A row whose value is empty is left out.
+type CardFactConfig struct {
+	Title string `yaml:"title"`
+	Tag   string `yaml:"tag,omitempty"`
+	Field string `yaml:"field,omitempty"`
 }
 
 // OutputFilters narrows which messages reach an output. Empty filters → match
 // every message. Multiple filter fields combine with AND; list fields combine
 // with OR internally.
 type OutputFilters struct {
-	SeverityMin     string            `yaml:"severity_min,omitempty"`
-	Match           map[string]string `yaml:"match,omitempty"`
-	TagsContain     []string          `yaml:"tags_contain,omitempty"`
-	MessageContains []string          `yaml:"message_contains,omitempty"`
+	SeverityMin string            `yaml:"severity_min,omitempty"`
+	Match       map[string]string `yaml:"match,omitempty"`
+	TagsContain []string          `yaml:"tags_contain,omitempty"`
+	// TagsExclude drops a message when any listed substring appears in its
+	// tags -- e.g. [demo=1] keeps demo matches out of a results channel.
+	TagsExclude     []string `yaml:"tags_exclude,omitempty"`
+	MessageContains []string `yaml:"message_contains,omitempty"`
 }
 
 // Recognised output types. Centralised so validation and the dispatcher agree.
@@ -61,6 +84,20 @@ var matchFields = map[string]struct{}{
 	"system":          {},
 	"author":          {},
 	"title":           {},
+	"assigneename":    {},
+	"assigneeaddress": {},
+}
+
+// cardFields lists the homerun.Message field names a card fact can show.
+var cardFields = map[string]struct{}{
+	"severity":        {},
+	"system":          {},
+	"author":          {},
+	"title":           {},
+	"message":         {},
+	"tags":            {},
+	"timestamp":       {},
+	"url":             {},
 	"assigneename":    {},
 	"assigneeaddress": {},
 }
@@ -197,6 +234,24 @@ func Validate(cfg *NotifyConfig) error {
 		for k := range o.Filters.Match {
 			if _, ok := matchFields[strings.ToLower(k)]; !ok {
 				return fmt.Errorf("%s: filters.match key %q is not a recognised field", prefix, k)
+			}
+		}
+		if len(o.Card.Facts) > 0 && o.Type != OutputTypeTeams {
+			return fmt.Errorf("%s: card is only supported for type %q", prefix, OutputTypeTeams)
+		}
+		for j, f := range o.Card.Facts {
+			fp := fmt.Sprintf("%s: card.facts[%d]", prefix, j)
+			if strings.TrimSpace(f.Title) == "" {
+				return fmt.Errorf("%s: title is required", fp)
+			}
+			tag, field := strings.TrimSpace(f.Tag), strings.TrimSpace(f.Field)
+			if (tag == "") == (field == "") {
+				return fmt.Errorf("%s: set exactly one of tag or field", fp)
+			}
+			if field != "" {
+				if _, ok := cardFields[strings.ToLower(field)]; !ok {
+					return fmt.Errorf("%s: field %q is not a recognised field", fp, field)
+				}
 			}
 		}
 	}

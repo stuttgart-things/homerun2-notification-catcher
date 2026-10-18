@@ -11,6 +11,7 @@ import (
 	"time"
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
@@ -296,4 +297,56 @@ func TestTeamsNotifier_SendRejectsEmptyURL(t *testing.T) {
 
 func TestTeamsNotifier_ImplementsNotifier(t *testing.T) {
 	var _ Notifier = (*TeamsNotifier)(nil)
+}
+
+func TestBuildEnvelopeWithCard_ConfiguredFacts(t *testing.T) {
+	msg := homerun.Message{
+		Title:     "WIN 3:1",
+		Message:   "Anna 3 : 1 Ben — Anna wins",
+		Severity:  "success",
+		System:    "tabletennis",
+		Tags:      "match=be14fdfc,transition=match_won,sets=3:1,winner=a,player_a=Anna,player_b=Ben,played=11-7 9-11 11-5 11-9",
+		Timestamp: "2026-10-18T20:33:55Z",
+	}
+	card := config.CardConfig{Facts: []config.CardFactConfig{
+		{Title: "Spieler A", Tag: "player_a"},
+		{Title: "Spieler B", Tag: "PLAYER_B"},
+		{Title: "Sätze", Tag: "sets"},
+		{Title: "Satzergebnisse", Tag: "played"},
+		{Title: "Banner", Tag: "banner"}, // absent: left out
+		{Title: "Zeit", Field: "timestamp"},
+	}}
+	env := BuildEnvelopeWithCard(msg, card)
+
+	body := env.Attachments[0].Content.Body
+	if len(body) != 2 || body[1].Type != "FactSet" {
+		t.Fatalf("body = %+v, want header + FactSet", body)
+	}
+	want := []models.CardFact{
+		{Title: "Spieler A", Value: "Anna"},
+		{Title: "Spieler B", Value: "Ben"},
+		{Title: "Sätze", Value: "3:1"},
+		{Title: "Satzergebnisse", Value: "11-7 9-11 11-5 11-9"},
+		{Title: "Zeit", Value: "2026-10-18T20:33:55Z"},
+	}
+	got := body[1].Facts
+	if len(got) != len(want) {
+		t.Fatalf("facts = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("fact[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestBuildEnvelopeWithCard_EmptyConfigKeepsDefaultFacts(t *testing.T) {
+	msg := homerun.Message{Title: "t", Severity: "info", System: "s"}
+	a := BuildEnvelope(msg)
+	b := BuildEnvelopeWithCard(msg, config.CardConfig{})
+	ja, _ := json.Marshal(a)
+	jb, _ := json.Marshal(b)
+	if string(ja) != string(jb) {
+		t.Errorf("empty card config changed the card:\n%s\n%s", ja, jb)
+	}
 }
