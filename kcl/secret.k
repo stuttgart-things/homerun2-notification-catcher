@@ -17,6 +17,11 @@ Secrets for homerun2-notification-catcher.
                     Substitution acts on the plaintext placeholder, so
                     stringData is the right field here. Skipped when
                     config.outputSecrets is empty.
+
+* <name>-sink     — SINK_TOKEN for the optional sink (key: token), read
+                    via secretKeyRef. Like <name>-secrets the value is a
+                    Flux substitution token, so stringData. Skipped unless
+                    config.sinkEnabled and config.sinkToken are set.
 """
 
 import base64
@@ -49,3 +54,17 @@ secretOutputs = {
     type: "Opaque"
     stringData: config.outputSecrets
 } if config.outputSecrets else None
+
+secretSink = {
+    apiVersion: "v1"
+    kind: "Secret"
+    metadata: {
+        name: labels.sinkName
+        namespace: config.namespace
+        labels: labels.sinkLabels
+    }
+    type: "Opaque"
+    stringData: {
+        token: config.sinkToken
+    }
+} if config.sinkEnabled and config.sinkToken else None

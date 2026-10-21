@@ -7,6 +7,8 @@ import serviceaccount
 import configmap
 import secret
 import deploy
+import service
+import httproute
 
 # Export all manifests, dropping None entries for resources whose generation
 # was skipped (e.g. <name>-redis when Redis is password-free).
@@ -21,5 +23,9 @@ manifests = [
         secret.secretRedis
         secret.secretOutputs
         deploy.deployment
+        secret.secretSink
+        deploy.sinkDeployment
+        service.sinkService
+        httproute.sinkHttpRoute
     ] if m
 ]

@@ -49,6 +49,37 @@ go build .
 
 Storage is in memory: a restart empties it.
 
+## Deploy with KCL
+
+The chart in `kcl/` deploys the sink next to the catcher when
+`config.sinkEnabled` is set (off by default; the published kustomize base
+has no sink). It emits `<name>-sink`: a Deployment running the catcher image
+with `args: [sink]` (one replica, the store is per pod), a Service, and
+optionally an HTTPRoute and a Secret for `SINK_TOKEN`.
+
+| Profile key | Default | Meaning |
+|---|---|---|
+| `config.sinkEnabled` | `false` | Emit the sink Deployment and Service |
+| `config.sinkCapacity` | `500` | `--capacity` |
+| `config.sinkBasePath` | *(empty)* | `BASE_PATH`, and the HTTPRoute's `PathPrefix` (e.g. `/notify`) |
+| `config.sinkToken` | *(empty)* | Emits Secret `<name>-sink` (key `token`) read as `SINK_TOKEN`; use a Flux token like `${SINK_TOKEN}` |
+| `config.sinkServiceType` / `sinkServicePort` / `sinkContainerPort` | `ClusterIP` / `80` / `8080` | Service and container port |
+| `config.sinkHttpRouteEnabled` | `false` | Emit an HTTPRoute (needs `sinkEnabled` and a parentRef name) |
+| `config.sinkHttpRouteParentRefName` / `…Namespace` | *(empty)* | Gateway the route attaches to |
+| `config.sinkHttpRouteHostname` | *(empty)* | Route hostname |
+| `config.sinkHttpRouteAnnotations` | `{}` | Extra route annotations |
+
+```bash
+cd kcl && kcl run -Y ../tests/kcl-deploy-profile.yaml \
+  -D config.sinkEnabled=true -D config.sinkBasePath=/notify \
+  -D config.sinkHttpRouteEnabled=true -D config.sinkHttpRouteParentRefName=<gateway> \
+  -D config.sinkHttpRouteHostname=<host>
+```
+
+In-cluster the outputs reach it at
+`http://<name>-sink.<namespace>.svc<sinkBasePath>/teams/<channel>` (Service
+port 80). The pod's probes use `/health` at the root, which needs no token.
+
 ## Point the catcher at it
 
 No catcher change is needed: give outputs the sink's URLs. The last path
@@ -66,19 +97,19 @@ outputs:
   # same filter, recorded by the sink
   - name: teams-platform-sink
     type: msteams
-    webhook_url: http://notify-sink.homerun2.svc:8080/teams/platform?token=${SINK_TOKEN}
+    webhook_url: http://homerun2-notification-catcher-sink.homerun2.svc/teams/platform?token=${SINK_TOKEN}
     filters: { severity_min: warning }
 
   # a target that is not connected yet: see what it would get
   - name: slack-standin
     type: webhook
-    url: http://notify-sink.homerun2.svc:8080/webhook/slack?token=${SINK_TOKEN}
+    url: http://homerun2-notification-catcher-sink.homerun2.svc/webhook/slack?token=${SINK_TOKEN}
     filters: { severity_min: critical }
 
   # optional: everything the catcher caught, also what matched no output
   - name: sink-inbox
     type: webhook
-    url: http://notify-sink.homerun2.svc:8080/inbox?token=${SINK_TOKEN}
+    url: http://homerun2-notification-catcher-sink.homerun2.svc/inbox?token=${SINK_TOKEN}
 ```
 
 Or without Redis, through the smoke subcommand:
