@@ -103,7 +103,7 @@ Branch-per-issue with PR and merge to main.
 ## Key Paths
 
 - `main.go` — entrypoint, server-mode bootstrap, signal handling
-- `smoke.go` — `notification-catcher smoke …` subcommand (in-process, no Redis)
+- `main.go` also holds the `smoke`, `sink` and `assert-card` subcommands (one file: the Dagger Go module builds `main.go` alone)
 - `internal/catcher/catcher.go` — RedisCatcher with JSON.GET payload resolution
 - `internal/catcher/handlers.go` — `LogHandler` and `severityToLevel`
 - `internal/catcher/mock.go` — `MockCatcher` for tests
@@ -115,9 +115,10 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
 - `internal/notify/dispatcher.go` — fan-out across configured outputs
 - `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/sink/static/vendor/`, no CDN; see `docs/sink.md`
+- `internal/sink/assert.go` — `AssertClient.AssertPosts`: the polling behind `assert-card` (selection on the sink's side, expectations checked locally to report near misses)
 - `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
-- `dagger/main.go` — CI functions (Lint, Build, BuildImage, ScanImage, BuildAndTestBinary, IntegrationTest)
+- `dagger/main.go` — CI functions (Lint, Build, BuildImage, ScanImage, BuildAndTestBinary, IntegrationTest, AssertCard)
 - `kcl/` — *(added in #8)* KCL deployment manifests; `config.sinkEnabled` adds the sink (`<name>-sink` ServiceAccount, Deployment, Service, optional HTTPRoute + token Secret, #54); `config.catcherEnabled: false` renders it alone
 - `tests/kcl-deploy-profile.yaml` / `tests/kcl-sink-profile.yaml` — flat `config.*` profiles (Dagger KCL module, not `kcl run -Y`) for the two published kustomize bases: `…-kustomize` (catcher) and `…-sink-kustomize` (sink only)
 - `notify.example.yaml` — annotated reference config
@@ -170,6 +171,8 @@ A stand-in receiver for card design and e2e assertions (#52). Point an `msteams`
 ```bash
 notification-catcher sink --addr :8080   # SINK_TOKEN, BASE_PATH optional
 ```
+
+`notification-catcher assert-card --sink <url> --channel … --object-id … --expect-fact System=… --timeout 60s` polls the sink until a post matches, else exits 1 with the near misses (#62); Dagger `assert-card` runs it from the image or `--src`.
 
 ## Testing
 
