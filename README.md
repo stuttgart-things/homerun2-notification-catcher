@@ -90,6 +90,16 @@ INFO dry-run: would send  output=teams-platform-alerts  title=DryRunSmoke  sever
 — filter evaluation runs, the dispatcher confirms what *would* fire, but no
 webhook is invoked. Once you've verified routing in `kubectl logs`, remove the
 `DRY_RUN` patch from the Flux component and reconcile again to flip to live.
+Live, each delivery logs `notifier sent` with the output's name, and each
+failure logs `notifier failed` with the error:
+
+```bash
+kubectl -n homerun2 logs deploy/homerun2-notification-catcher --tail=50 | grep -E "notifier (sent|failed)"
+```
+
+```
+INFO notifier sent  output=teams-homerun2-dev  title="Test-Warning Matrix"  severity=warning  system=portal-test
+```
 
 ### 3. Trip a real Prometheus alert
 
