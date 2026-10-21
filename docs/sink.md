@@ -43,7 +43,7 @@ go build .
 |---|---|---|
 | `--addr` / `SINK_ADDR` | `:8080` | Listen address |
 | `--capacity` | `500` | Posts kept per channel; the oldest drop first |
-| `SINK_TOKEN` | *(empty)* | When set, required on every route but `/health`/`/healthz`, as `Authorization: Bearer <token>` or `?token=<token>` |
+| `SINK_TOKEN` | *(empty)* | When set, required on every route but `/health`/`/healthz` and the page's static files, as `Authorization: Bearer <token>` or `?token=<token>` |
 | `BASE_PATH` | *(empty)* | URL prefix behind a reverse proxy, e.g. `/notify` behind homerun2-portal; health stays at the root |
 | `LOG_FORMAT`, `LOG_LEVEL` | `json`, `info` | As for the catcher |
 
@@ -128,10 +128,10 @@ Tabs, in the homerun2-core-catcher layout (filters, table, detail panel):
   channel. A click opens the details; a click on a channel opens that post
   in its system's tab.
 - **MS Teams**: the Teams posts; the detail shows the card as Teams renders
-  it (Microsoft's Adaptive Cards JS renderer, `adaptivecards@3.0.4` from
-  unpkg, with a host config close to Teams dark or light; a plain renderer
-  without internet), the notification preview line (`fallbackText`, #45)
-  and the raw payload.
+  it (Microsoft's Adaptive Cards JS renderer, `adaptivecards@3.0.4`, with a
+  host config close to Teams dark or light; a plain renderer if that script
+  fails), the notification preview line (`fallbackText`, #45) and the raw
+  payload.
 - **Webhook**: the webhook posts with their JSON payload.
 - **Card playground**: paste a `homerun.Message` JSON and an output's
   `card:` YAML, and see the card the catcher would send. Invalid card
@@ -139,6 +139,11 @@ Tabs, in the homerun2-core-catcher layout (filters, table, detail panel):
 
 The tab is kept in the URL (`#msteams`, …). Add `?token=<token>` to the page
 URL when a token is set.
+
+The page needs no internet: Pico CSS, the Adaptive Cards renderer, the
+header font and the logo are embedded in the binary and served from
+`<BASE_PATH>/static/` (no token, cached for a day). Versions, sources and
+licenses: `internal/sink/static/vendor/README.md`.
 
 ## API
 

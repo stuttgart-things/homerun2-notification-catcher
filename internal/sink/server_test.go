@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -602,5 +603,55 @@ func TestInboxRejectsNonMessages(t *testing.T) {
 		if resp.StatusCode != want {
 			t.Errorf("%s: %d, want %d", body, resp.StatusCode, want)
 		}
+	}
+}
+
+// The page must work in clusters without internet: every stylesheet,
+// script and icon it references is served by the sink itself, without the
+// token (tags can't send it).
+func TestIndexAssetsAreLocal(t *testing.T) {
+	ts := httptest.NewServer(NewServer(NewStore(10), Options{BasePath: "/notify", Token: "s3cret"}).Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/notify/?token=s3cret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	refs := regexp.MustCompile(`<(?:link|script|img)\b[^>]*\b(?:href|src)="([^"]+)"`).FindAllStringSubmatch(string(body), -1)
+	if len(refs) < 5 {
+		t.Fatalf("found %d asset references, want favicon, pico, fonts, adaptivecards, logo", len(refs))
+	}
+	for _, m := range refs {
+		ref := m[1]
+		if ref == "/static/homerun2-tokens.css" {
+			continue // the portal's own file, only linked behind the portal
+		}
+		if !strings.HasPrefix(ref, "/notify/static/") {
+			t.Errorf("asset %q is not served by the sink", ref)
+			continue
+		}
+		resp, err := http.Get(ts.URL + ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s without token: %d", ref, resp.StatusCode)
+		}
+		if resp.Header.Get("Cache-Control") == "" {
+			t.Errorf("GET %s: no Cache-Control", ref)
+		}
+	}
+
+	resp, err = http.Get(ts.URL + "/notify/static/vendor/press-start-2p-latin.woff2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("font referenced by fonts.css: %d", resp.StatusCode)
 	}
 }
