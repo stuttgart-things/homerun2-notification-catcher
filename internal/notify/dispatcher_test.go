@@ -7,6 +7,7 @@ import (
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
 // stubNotifier records calls and returns a canned error.
@@ -16,10 +17,16 @@ type stubNotifier struct {
 	err    error
 }
 
-func (s *stubNotifier) Send(_ context.Context, msg homerun.Message) error {
+func (s *stubNotifier) Send(_ context.Context, msg models.CaughtMessage) error {
 	s.called++
-	s.last = msg
+	s.last = msg.Message
 	return s.err
+}
+
+// caught wraps msg as the catcher hands it to the notifiers, without an
+// objectId.
+func caught(msg homerun.Message) models.CaughtMessage {
+	return models.CaughtMessage{Message: msg}
 }
 
 func TestDispatcher_FanOutToMatchingOutputs(t *testing.T) {
@@ -45,10 +52,10 @@ func TestDispatcher_FanOutToMatchingOutputs(t *testing.T) {
 		},
 	)
 
-	results := d.Dispatch(context.Background(), homerun.Message{
+	results := d.Dispatch(context.Background(), caught(homerun.Message{
 		Title:    "disk almost full",
 		Severity: "warning",
-	})
+	}))
 
 	// teams + general fire; pagerduty skipped (needs critical).
 	if teams.called != 1 || general.called != 1 {
@@ -74,7 +81,7 @@ func TestDispatcher_OneOutputFailingDoesNotBlockOthers(t *testing.T) {
 		DispatcherEntry{Name: "good", Notifier: good},
 	)
 
-	results := d.Dispatch(context.Background(), homerun.Message{Title: "x"})
+	results := d.Dispatch(context.Background(), caught(homerun.Message{Title: "x"}))
 
 	if bad.called != 1 || good.called != 1 {
 		t.Errorf("both should be called: bad=%d good=%d", bad.called, good.called)
@@ -136,10 +143,10 @@ func TestDispatcher_DryRun_SkipsSendForMatchingOutputs(t *testing.T) {
 	)
 	d.DryRun = true
 
-	results := d.Dispatch(context.Background(), homerun.Message{
+	results := d.Dispatch(context.Background(), caught(homerun.Message{
 		Title:    "disk almost full",
 		Severity: "warning",
-	})
+	}))
 
 	if teams.called != 0 {
 		t.Errorf("teams.Send should not be called in dry-run, called=%d", teams.called)
@@ -173,7 +180,7 @@ func TestDispatcher_DryRun_FailingNotifierIsNotInvoked(t *testing.T) {
 	)
 	d.DryRun = true
 
-	results := d.Dispatch(context.Background(), homerun.Message{Title: "x"})
+	results := d.Dispatch(context.Background(), caught(homerun.Message{Title: "x"}))
 
 	if bad.called != 0 {
 		t.Errorf("Notifier.Send must not be invoked in dry-run, called=%d", bad.called)

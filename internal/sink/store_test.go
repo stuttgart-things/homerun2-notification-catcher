@@ -12,7 +12,7 @@ import (
 
 func TestStoreRingBufferPerChannel(t *testing.T) {
 	s := NewStore(3)
-	env := notify.BuildEnvelope(homerun.Message{Title: "x"})
+	env := notify.BuildEnvelope(caught(homerun.Message{Title: "x"}))
 	for i := 0; i < 5; i++ {
 		s.AddTeams("a", env, []byte(`{}`))
 	}
@@ -38,7 +38,7 @@ func TestStoreRingBufferPerChannel(t *testing.T) {
 
 func TestStoreQueryCursorAndLimit(t *testing.T) {
 	s := NewStore(0)
-	env := notify.BuildEnvelope(homerun.Message{Title: "x"})
+	env := notify.BuildEnvelope(caught(homerun.Message{Title: "x"}))
 	for i := 0; i < 4; i++ {
 		s.AddTeams("a", env, []byte(`{}`))
 	}
@@ -60,9 +60,9 @@ func TestStoreQueryCursorAndLimit(t *testing.T) {
 
 func TestSummarizeDefaultCard(t *testing.T) {
 	s := NewStore(0)
-	m := s.AddTeams("a", notify.BuildEnvelope(homerun.Message{
+	m := s.AddTeams("a", notify.BuildEnvelope(caught(homerun.Message{
 		Title: "boom", Message: "broke", Severity: "critical", Author: "me",
-	}), []byte(`{}`))
+	})), []byte(`{}`))
 	if m.Title != "boom" || m.Style != "attention" || m.Facts["Author"] != "me" || m.FallbackText != "[critical] boom: broke" || m.Severity != "critical" {
 		t.Errorf("summary: %+v", m)
 	}
@@ -71,7 +71,7 @@ func TestSummarizeDefaultCard(t *testing.T) {
 func TestSummarizeSeverityFromFallbackText(t *testing.T) {
 	// A card whose configured facts leave out Severity still gets it from
 	// the "[severity] " prefix of its fallback text.
-	env := notify.BuildEnvelopeWithCard(homerun.Message{Title: "t", Severity: "warning", Tags: "k=v"},
+	env := notify.BuildEnvelopeWithCard(caught(homerun.Message{Title: "t", Severity: "warning", Tags: "k=v"}),
 		config.CardConfig{Facts: []config.CardFactConfig{{Title: "K", Tag: "k"}}})
 	m := NewStore(0).AddTeams("a", env, []byte(`{}`))
 	if m.Severity != "warning" || m.Facts["K"] != "v" {

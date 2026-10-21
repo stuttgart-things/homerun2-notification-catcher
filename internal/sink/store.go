@@ -21,6 +21,7 @@ import (
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
 )
 
 // Sink kinds, named after the catcher's output types.
@@ -59,6 +60,9 @@ type Notification struct {
 	Tags      string    `json:"tags,omitempty"`
 	Timestamp string    `json:"timestamp,omitempty"`
 	URL       string    `json:"url,omitempty"`
+	// ObjectID is the message's id from the catcher (#64), when a post
+	// carried it.
+	ObjectID string `json:"objectId,omitempty"`
 	// Inbox is true when the catch-all /inbox output saw the message.
 	Inbox      bool       `json:"inbox"`
 	Deliveries []Delivery `json:"deliveries"`
@@ -95,6 +99,9 @@ type Message struct {
 	FallbackText string            `json:"fallbackText,omitempty"`
 	Style        string            `json:"style,omitempty"`
 	Facts        map[string]string `json:"facts,omitempty"`
+	// ObjectID is the catcher's id of the message (#64): the card's footer,
+	// or "objectId" in the webhook JSON. Empty from catchers before v3.7.
+	ObjectID string `json:"objectId,omitempty"`
 	// NotificationID is the notification this post was grouped into.
 	NotificationID string `json:"notificationId"`
 
@@ -109,9 +116,11 @@ type Query struct {
 	Since time.Time
 	// AfterSeq keeps messages with a higher Seq (cursor for polling).
 	AfterSeq uint64
+	// ObjectID keeps messages with this objectId; a post that carries none
+	// matches when its raw body contains the id.
+	ObjectID string
 	// Contains keeps messages whose raw body contains this substring
-	// (case-insensitive). objectId lookups use it: the id is matched
-	// wherever the card carries it.
+	// (case-insensitive).
 	Contains string
 	// Facts keeps messages whose card has every listed fact (title and
 	// value compared case-insensitively).
@@ -156,40 +165,50 @@ func (s *Store) AddTeams(channel string, env models.TeamsEnvelope, raw []byte) *
 // summary fields; any other JSON is kept as is.
 func (s *Store) AddWebhook(channel string, raw []byte) *Message {
 	m := &Message{Kind: KindWebhook, Channel: channel}
-	if msg, ok := decodeMessage(raw); ok {
-		m.msg = &msg
-		summarizeMessage(m, msg)
+	if p, ok := decodeMessage(raw); ok {
+		m.msg = &p.Message
+		m.ObjectID = p.ObjectID
+		summarizeMessage(m, p.Message)
 	}
 	return s.add(m, raw)
 }
 
 // AddInbox records a message the catch-all output saw. It only marks (or
 // creates) the notification; the inbox is not a channel.
-func (s *Store) AddInbox(msg homerun.Message) *Notification {
+func (s *Store) AddInbox(p notify.WebhookPayload) *Notification {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now().UTC()
-	n := s.group(messageKey(msg), now, func(n *Notification) bool { return n.Inbox })
+	n := s.group(messageKey(p.ObjectID, p.Message), now, func(n *Notification) bool { return n.Inbox })
 	n.Inbox = true
-	n.fillFromMessage(msg)
+	n.fillFromMessage(p.Message)
+	if n.ObjectID == "" {
+		n.ObjectID = p.ObjectID
+	}
 	s.publish(Event{Notification: n.clone()})
 	return n.clone()
 }
 
-// decodeMessage reads raw as a homerun.Message; ok is false when it is not
-// one (no title, message, severity or system).
-func decodeMessage(raw []byte) (homerun.Message, bool) {
-	var msg homerun.Message
-	if json.Unmarshal(raw, &msg) != nil {
-		return msg, false
+// decodeMessage reads raw as what a webhook output sends (a homerun.Message,
+// plus its objectId from v3.7); ok is false when it is not one (no title,
+// message, severity or system).
+func decodeMessage(raw []byte) (notify.WebhookPayload, bool) {
+	var p notify.WebhookPayload
+	if json.Unmarshal(raw, &p) != nil {
+		return p, false
 	}
-	return msg, msg.Title != "" || msg.Message != "" || msg.Severity != "" || msg.System != ""
+	msg := p.Message
+	return p, msg.Title != "" || msg.Message != "" || msg.Severity != "" || msg.System != ""
 }
 
-// messageKey identifies a message across outputs: severity, title and body
-// normalised the way the catcher's Teams card builds them, so a card and the
-// webhook JSON of the same message get the same key.
-func messageKey(msg homerun.Message) string {
+// messageKey identifies a message across outputs: its objectId when the post
+// carried one (#64), else severity, title and body normalised the way the
+// catcher's Teams card builds them, so a card and the webhook JSON of the
+// same message get the same key.
+func messageKey(objectID string, msg homerun.Message) string {
+	if id := strings.TrimSpace(objectID); id != "" {
+		return "id\x00" + id
+	}
 	title := strings.TrimSpace(msg.Title)
 	if title == "" {
 		title = "Notification"
@@ -282,9 +301,9 @@ func (n *Notification) clone() *Notification {
 func postKey(m *Message) string {
 	switch {
 	case m.msg != nil:
-		return messageKey(*m.msg)
-	case m.Kind == KindTeams && m.Title != "":
-		return messageKey(homerun.Message{Title: m.Title, Message: m.Body, Severity: m.Severity})
+		return messageKey(m.ObjectID, *m.msg)
+	case m.Kind == KindTeams && (m.Title != "" || m.ObjectID != ""):
+		return messageKey(m.ObjectID, homerun.Message{Title: m.Title, Message: m.Body, Severity: m.Severity})
 	default:
 		return ""
 	}
@@ -313,6 +332,9 @@ func (s *Store) add(m *Message, raw []byte) *Message {
 	})
 	n.Deliveries = append(n.Deliveries, Delivery{PostID: m.ID, Kind: m.Kind, Channel: m.Channel, ReceivedAt: m.ReceivedAt})
 	n.fillFromPost(m)
+	if n.ObjectID == "" {
+		n.ObjectID = m.ObjectID
+	}
 	m.NotificationID = n.ID
 
 	list := append(s.channels[channel], m)
@@ -387,6 +409,9 @@ func (s *Store) List(q Query) []*Message {
 			if contains != "" && !strings.Contains(strings.ToLower(string(m.Raw)), contains) {
 				continue
 			}
+			if !hasObjectID(m, q.ObjectID) {
+				continue
+			}
 			if !hasFacts(m, q.Facts) {
 				continue
 			}
@@ -438,6 +463,19 @@ func (s *Store) Subscribe() (<-chan Event, func()) {
 		s.mu.Lock()
 		delete(s.subs, ch)
 		s.mu.Unlock()
+	}
+}
+
+// hasObjectID reports whether m is the post of message id: by its objectId,
+// or for a post from a catcher that sent none, by the id in its body.
+func hasObjectID(m *Message, id string) bool {
+	switch {
+	case id == "":
+		return true
+	case m.ObjectID != "":
+		return m.ObjectID == id
+	default:
+		return strings.Contains(string(m.Raw), id)
 	}
 }
 
@@ -495,6 +533,10 @@ func summarizeCard(m *Message) {
 		for _, e := range elems {
 			if e.Type == "Container" && m.Style == "" {
 				m.Style = e.Style
+			}
+			if e.Type == "TextBlock" && e.IsSubtle && strings.HasPrefix(e.Text, notify.ObjectIDFooterPrefix) {
+				m.ObjectID = strings.TrimSpace(strings.TrimPrefix(e.Text, notify.ObjectIDFooterPrefix))
+				continue
 			}
 			if e.Type == "TextBlock" {
 				switch texts {

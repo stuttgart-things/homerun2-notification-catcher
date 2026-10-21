@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	homerun "github.com/stuttgart-things/homerun-library/v4"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
 // Dispatcher fans a homerun.Message out to every configured output whose
@@ -87,21 +87,23 @@ type DispatcherEntry struct {
 // are logged but do not abort the rest. The returned slice mirrors the output
 // order so callers can map results back to config entries.
 //
-// Every delivery is logged at INFO ("notifier sent", with the output's name),
+// Every delivery is logged at INFO ("notifier sent", with the output's name
+// and the message's objectId),
 // so `kubectl logs` shows whether a message reached e.g. Teams without
 // looking at the channel. When Dispatcher.DryRun is true, matching outputs
 // skip the Notifier.Send call and log "dry-run: would send" at INFO instead. Skipped outputs (filters didn't match) are reported
 // the same way in both modes.
-func (d *Dispatcher) Dispatch(ctx context.Context, msg homerun.Message) []DispatchResult {
+func (d *Dispatcher) Dispatch(ctx context.Context, msg models.CaughtMessage) []DispatchResult {
 	results := make([]DispatchResult, 0, len(d.outputs))
 	for _, o := range d.outputs {
-		if !Matches(o.filters, msg) {
+		if !Matches(o.filters, msg.Message) {
 			results = append(results, DispatchResult{Output: o.name, Skipped: true})
 			continue
 		}
 		if d.DryRun {
 			slog.Info("dry-run: would send",
 				"output", o.name,
+				"objectId", msg.ObjectID,
 				"title", msg.Title,
 				"severity", msg.Severity,
 				"system", msg.System,
@@ -111,10 +113,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg homerun.Message) []Dispat
 		}
 		err := o.notifier.Send(ctx, msg)
 		if err != nil {
-			slog.Error("notifier failed", "output", o.name, "title", msg.Title, "error", err)
+			slog.Error("notifier failed", "output", o.name, "objectId", msg.ObjectID, "title", msg.Title, "error", err)
 		} else {
 			slog.Info("notifier sent",
 				"output", o.name,
+				"objectId", msg.ObjectID,
 				"title", msg.Title,
 				"severity", msg.Severity,
 				"system", msg.System,

@@ -21,13 +21,15 @@ omni-pitcher → redis → notification-catcher ─┬─ msteams output ──�
 | Sink route | Takes | Answers |
 |---|---|---|
 | `POST /teams/{channel}` | Exactly what a Teams Workflow webhook takes: `{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard",…}}]}` | `202`, empty body, like Teams; `400` for anything else |
-| `POST /webhook/{channel}` | Any JSON (the `webhook` output sends a `homerun.Message`) | `200`; `400` for invalid JSON |
+| `POST /webhook/{channel}` | Any JSON (the `webhook` output sends a `homerun.Message` plus `objectId`) | `200`; `400` for invalid JSON |
 | `POST /inbox` | A `homerun.Message` from a catch-all `webhook` output (no filters). Not a channel: it adds the messages that went to no channel to the list | `200`; `400` otherwise |
 
-Posts of one catcher dispatch are grouped into one notification: same
-severity, title and message (normalised as the Teams card builds them),
-arriving within 30 s (the catcher's fan-out cap), each channel once. The
-same message dispatched again becomes a new notification.
+Posts of one catcher dispatch are grouped into one notification by the
+message's `objectId` (#64): the card's footer, the `objectId` field of the
+webhook JSON. Posts from catchers before v3.7, which send no id, group by
+content instead: same severity, title and message (normalised as the Teams
+card builds them). Either way within 30 s (the catcher's fan-out cap), each
+channel once; the same message dispatched again becomes a new notification.
 
 The sink proves *what the catcher sent*, not that Teams posted it, and it
 only sees messages that matched an output pointed at it.
@@ -155,8 +157,9 @@ Tabs, in the homerun2-core-catcher layout (filters, table, detail panel):
   fails), the notification preview line (`fallbackText`, #45) and the raw
   payload.
 - **Webhook**: the webhook posts with their JSON payload.
-- **Card playground**: paste a `homerun.Message` JSON and an output's
-  `card:` YAML, and see the card the catcher would send. Invalid card
+- **Card playground**: paste a `homerun.Message` JSON (an `objectId` key in
+  it becomes the card's footer) and an output's `card:` YAML, and see the
+  card the catcher would send. Invalid card
   configs are rejected with the config loader's error.
 
 The tab is kept in the URL (`#msteams`, …). Add `?token=<token>` to the page
@@ -172,7 +175,7 @@ licenses: `internal/sink/static/vendor/README.md`.
 | Route | |
 |---|---|
 | `GET /api/notifications` | Notifications, newest first, each with `deliveries` (`postId`, `kind`, `channel`, `receivedAt`) and `inbox`. Query: `q` (title, message, system, tags), `limit` |
-| `GET /api/messages` | Posts, newest first. Query: `kind` (`msteams`, `webhook`), `channel`, `since` (RFC3339), `after` (seq cursor), `objectId` or `q` (substring of the body), `fact=Title=Value` (repeatable, case-insensitive), `limit` |
+| `GET /api/messages` | Posts, newest first. Query: `kind` (`msteams`, `webhook`), `channel`, `since` (RFC3339), `after` (seq cursor), `objectId` (the message's id; for posts without one, the id anywhere in the body), `q` (substring of the body), `fact=Title=Value` (repeatable, case-insensitive), `limit` |
 | `GET /api/messages/{id}` | The posted body, as received |
 | `DELETE /api/messages[?kind=&channel=]` | Clear matching posts (all without parameters) |
 | `GET /api/channels` | `{"<kind>/<channel>": count}` |
@@ -215,7 +218,8 @@ assert-card: no matching post (channel=cluster-build-watch&kind=msteams)
 | `--token` / `SINK_TOKEN` | *(empty)* | Sent as `Authorization: Bearer` |
 | `--kind` | `msteams` | `webhook`, or empty for both |
 | `--channel` | | Selects posts to that channel |
-| `--object-id`, `--contains` | | Selects posts whose body contains it (one of the two) |
+| `--object-id` | | Selects the posts of this message (its `objectId`) |
+| `--contains` | | Selects posts whose body contains it |
 | `--since` | | Selects posts received after it: a duration ago (`10m`) or RFC3339 |
 | `--expect-fact Title=Value` | | Repeatable; title and value case-insensitive |
 | `--expect-title` | | Substring of the title |
@@ -238,9 +242,10 @@ A sink running as a Dagger service is passed with `--sink` (e.g.
 `tcp://localhost:8080` from the host) and reached as `--sink-url
 http://sink:8080`. `--token` takes a Dagger secret (`env://SINK_TOKEN`).
 
-`objectId` matches anywhere in the posted body, so it finds a post once the
-payload carries the id (#49). Until then, select by channel and `--since`,
-or `--contains` a unique title.
+The `objectId` is the one omni-pitcher answers `/pitch` with. The catcher
+passes it on from v3.7 (#64); for posts from an older catcher it matches
+anywhere in the body, which usually means not at all. Then select by channel
+and `--since`, or `--contains` a unique title.
 
 Without the subcommand, `seq` grows with each post, so
 `GET /api/messages?after=<last seq seen>` is a cursor that does not depend

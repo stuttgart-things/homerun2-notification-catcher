@@ -20,7 +20,7 @@ type Assertion struct {
 	// Selection
 	Kind     string
 	Channel  string
-	ObjectID string // substring of the posted body
+	ObjectID string // the message's objectId (#64); body substring for older catchers
 	Contains string // substring of the posted body
 	Since    time.Time
 
@@ -47,9 +47,6 @@ const nearMisses = 5
 // when the sink rejects the request (400, 401, 404): retrying will not fix
 // those. Unreachable sinks and 5xx are retried.
 func (c *AssertClient) AssertPosts(ctx context.Context, a Assertion) ([]*Message, error) {
-	if a.ObjectID != "" && a.Contains != "" {
-		return nil, errors.New("use either an objectId or contains")
-	}
 	want := max(a.Count, 1)
 	interval := c.Interval
 	if interval <= 0 {
@@ -69,7 +66,10 @@ func (c *AssertClient) AssertPosts(ctx context.Context, a Assertion) ([]*Message
 		case errors.As(err, &perm):
 			return nil, perm.err
 		case err != nil:
-			lastErr = err
+			// The poll the deadline cut short says less than the one before.
+			if ctx.Err() == nil || lastErr == nil {
+				lastErr = err
+			}
 		default:
 			polls++
 			lastErr = nil

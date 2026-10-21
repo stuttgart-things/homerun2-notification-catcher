@@ -22,6 +22,10 @@ const (
 
 	defaultTitle = "Notification"
 
+	// ObjectIDFooterPrefix starts the card's last TextBlock, which carries the
+	// message's objectId; the sink reads the id back from it.
+	ObjectIDFooterPrefix = "objectId "
+
 	defaultHTTPTimeout = 10 * time.Second
 )
 
@@ -51,7 +55,7 @@ func (n *TeamsNotifier) WithCard(card config.CardConfig) *TeamsNotifier {
 
 // Send renders msg into an Adaptive Card and POSTs it to the configured webhook.
 // Non-2xx responses are returned as errors with the response body included.
-func (n *TeamsNotifier) Send(ctx context.Context, msg homerun.Message) error {
+func (n *TeamsNotifier) Send(ctx context.Context, msg models.CaughtMessage) error {
 	if n.webhookURL == "" {
 		return fmt.Errorf("teams: webhook URL is empty")
 	}
@@ -82,25 +86,25 @@ func (n *TeamsNotifier) Send(ctx context.Context, msg homerun.Message) error {
 	return nil
 }
 
-// BuildEnvelope maps a homerun.Message to the Power Automate Adaptive-Card
+// BuildEnvelope maps a caught message to the Power Automate Adaptive-Card
 // envelope. Pure function — exported for testing.
-func BuildEnvelope(msg homerun.Message) models.TeamsEnvelope {
+func BuildEnvelope(msg models.CaughtMessage) models.TeamsEnvelope {
 	return BuildEnvelopeWithCard(msg, config.CardConfig{})
 }
 
 // BuildEnvelopeWithCard is BuildEnvelope with an output's card config: its
 // facts, when set, replace the default FactSet.
-func BuildEnvelopeWithCard(msg homerun.Message, card config.CardConfig) models.TeamsEnvelope {
+func BuildEnvelopeWithCard(msg models.CaughtMessage, card config.CardConfig) models.TeamsEnvelope {
 	return models.TeamsEnvelope{
 		Type: "message",
 		Attachments: []models.TeamsAttachment{{
 			ContentType: adaptiveCardContentType,
-			Content:     buildCard(msg, card),
+			Content:     buildCard(msg.Message, msg.ObjectID, card),
 		}},
 	}
 }
 
-func buildCard(msg homerun.Message, cfg config.CardConfig) models.AdaptiveCard {
+func buildCard(msg homerun.Message, objectID string, cfg config.CardConfig) models.AdaptiveCard {
 	title := strings.TrimSpace(msg.Title)
 	if title == "" {
 		title = defaultTitle
@@ -146,6 +150,18 @@ func buildCard(msg homerun.Message, cfg config.CardConfig) models.AdaptiveCard {
 		card.Body = append(card.Body, models.CardElement{
 			Type:  "FactSet",
 			Facts: facts,
+		})
+	}
+
+	// Small and dimmed, last: the id to look the message up by, in the sink
+	// (assert-card --object-id) or the logs, without competing with the facts.
+	if id := strings.TrimSpace(objectID); id != "" {
+		card.Body = append(card.Body, models.CardElement{
+			Type:     "TextBlock",
+			Text:     ObjectIDFooterPrefix + id,
+			Size:     "Small",
+			IsSubtle: true,
+			Wrap:     true,
 		})
 	}
 

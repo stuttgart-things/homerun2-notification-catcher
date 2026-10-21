@@ -186,7 +186,7 @@
             <div class="detail-panel">
                 <div class="detail-grid">
                     <div>
-                        <label for="pg-message">homerun.Message (JSON)</label>
+                        <label for="pg-message">homerun.Message (JSON), plus the <code>objectId</code> the catcher adds</label>
                         <textarea id="pg-message">{
   "title": "disk almost full",
   "message": "/var is at 91% on node-3",
@@ -194,7 +194,8 @@
   "system": "kubernetes",
   "author": "omni-pitcher",
   "tags": "infra,storage,cluster=labda",
-  "url": "https://grafana.example/d/disk"
+  "url": "https://grafana.example/d/disk",
+  "objectId": "1761000000000-0"
 }</textarea>
                         <label for="pg-card">Output <code>card:</code> block (YAML, empty = default card)</label>
                         <textarea id="pg-card" placeholder="facts:&#10;  - title: Cluster&#10;    tag: cluster&#10;  - title: System&#10;    field: system"></textarea>
@@ -341,7 +342,7 @@
         const walk = (items) => (items || []).forEach((e) => {
             if (e.type === "Container" && e.style && box.classList.length === 1) box.classList.add(e.style);
             if (e.type === "TextBlock") {
-                box.append(el("div", { className: first ? "t" : "", textContent: e.text || "" }));
+                box.append(el("div", { className: first ? "t" : e.isSubtle ? "muted" : "", textContent: e.text || "" }));
                 first = false;
             } else if (e.type === "FactSet") {
                 const t = el("table");
@@ -405,7 +406,7 @@
         if (ch === "-" && n.deliveries.length) return false;
         if (ch && ch !== "-" && !n.deliveries.some((d) => channelKey(d.kind, d.channel) === ch)) return false;
         const q = $("nq").value.trim().toLowerCase();
-        return !q || [n.title, n.message, n.system, n.author, n.tags].join("\n").toLowerCase().includes(q);
+        return !q || [n.title, n.message, n.system, n.author, n.tags, n.objectId].join("\n").toLowerCase().includes(q);
     }
 
     function renderNotifications(withDetail) {
@@ -455,6 +456,7 @@
                 ["Author", n.author],
                 ["Tags", n.tags],
                 ["Timestamp", n.timestamp],
+                ["Object ID", n.objectId],
                 ["First Seen", fmtTime(n.firstSeen)],
                 ["URL", n.url && /^https?:/i.test(n.url) ? el("a", { href: n.url, target: "_blank", rel: "noopener", textContent: n.url }) : n.url],
             ])));
@@ -506,6 +508,7 @@
                     ["Received", fmtTime(x.receivedAt)],
                     ["Severity", x.severity && sevSpan(x.severity)],
                     ["System", x.system],
+                    ["Object ID", x.objectId],
                     ["Post ID", x.id],
                     ["Notification", toNotification],
                 ]),
@@ -567,10 +570,12 @@
         $("pg-error").textContent = "";
         let message;
         try { message = JSON.parse($("pg-message").value); } catch (e) { $("pg-error").textContent = "message: " + e.message; return; }
+        // objectId is not a homerun.Message field: the catcher adds it (footer).
+        const { objectId, ...msg } = message || {};
         const res = await fetch(url("/api/render"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: message, card: $("pg-card").value })
+            body: JSON.stringify({ message: msg, objectId: objectId, card: $("pg-card").value })
         });
         if (!res.ok) { $("pg-error").textContent = await res.text(); return; }
         lastEnvelope = await res.json();

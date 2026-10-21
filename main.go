@@ -92,7 +92,7 @@ func runServer() error {
 	dispatchHandler := func(cm models.CaughtMessage) {
 		ctx, cancel := context.WithTimeout(context.Background(), dispatchTimeout)
 		defer cancel()
-		dispatcher.Dispatch(ctx, cm.Message)
+		dispatcher.Dispatch(ctx, cm)
 	}
 
 	redisConfig := config.LoadRedisConfig()
@@ -186,6 +186,7 @@ func runSmoke(args []string) error {
 		url             = fs.String("url", "", "Message.URL")
 		assigneeName    = fs.String("assignee-name", "", "Message.AssigneeName")
 		assigneeAddress = fs.String("assignee-address", "", "Message.AssigneeAddress")
+		objectID        = fs.String("object-id", "", "objectId the outputs carry (card footer, webhook field); empty: none")
 		timeoutFlag     = fs.Duration("timeout", 30*time.Second, "total timeout for the fan-out")
 		dryRun          = fs.Bool("dry-run", boolEnv("DRY_RUN"), "log which outputs would fire but do not invoke any Notifier")
 	)
@@ -225,7 +226,7 @@ func runSmoke(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeoutFlag)
 	defer cancel()
 
-	results := dispatcher.Dispatch(ctx, msg)
+	results := dispatcher.Dispatch(ctx, models.CaughtMessage{Message: msg, ObjectID: *objectID})
 	return printSmokeResults(results)
 }
 
@@ -337,7 +338,7 @@ func runAssertCard(args []string) error {
 	interval := fs.Duration("interval", time.Second, "time between polls")
 	fs.StringVar(&a.Kind, "kind", sink.KindTeams, "post kind: msteams, webhook, or empty for both")
 	fs.StringVar(&a.Channel, "channel", "", "channel (last path segment of the output URL)")
-	fs.StringVar(&a.ObjectID, "object-id", "", "only posts whose body contains this objectId")
+	fs.StringVar(&a.ObjectID, "object-id", "", "only posts of this message (its objectId)")
 	fs.StringVar(&a.Contains, "contains", "", "only posts whose body contains this text")
 	fs.StringVar(&since, "since", "", "only posts received after this: a duration ago (10m) or RFC3339")
 	fs.Func("expect-fact", "Title=Value the post must carry (repeatable)", func(v string) error {

@@ -82,7 +82,7 @@ All filter rules AND together. List-valued rules (`tags_contain`, `tags_exclude`
 
 ### Card facts (msteams)
 
-By default a Teams card shows the title, the message and a FactSet of severity, system, author, tags and time. `card.facts` replaces that FactSet row for row, so a producer that packs its data into `key=value` tags gets one readable row per value:
+By default a Teams card shows the title, the message and a FactSet of severity, system, author, tags and time, and below it, small and dimmed, the message's `objectId` (the id omni-pitcher answered `/pitch` with, to look it up in the logs or the sink; #64). A `webhook` output sends the `homerun.Message` JSON with an added `objectId` field. `card.facts` replaces the FactSet row for row (the footer stays), so a producer that packs its data into `key=value` tags gets one readable row per value:
 
 ```yaml
   - name: teams-tabletennis-results

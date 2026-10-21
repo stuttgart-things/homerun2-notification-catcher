@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func TestBuildEnvelope_Shape(t *testing.T) {
 		Timestamp: "2026-05-24T10:00:00Z",
 		URL:       "https://grafana.example/d/abc",
 	}
-	env := BuildEnvelope(msg)
+	env := BuildEnvelope(caught(msg))
 
 	if env.Type != "message" {
 		t.Errorf("envelope.Type = %q, want %q", env.Type, "message")
@@ -147,7 +148,7 @@ func TestBuildEnvelope_FallbackText(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			card := BuildEnvelope(tc.msg).Attachments[0].Content
+			card := BuildEnvelope(caught(tc.msg)).Attachments[0].Content
 			if card.FallbackText != tc.want {
 				t.Errorf("fallbackText = %q, want %q", card.FallbackText, tc.want)
 			}
@@ -160,7 +161,7 @@ func TestBuildEnvelope_OmitsEmptyFields(t *testing.T) {
 		Title:    "ping",
 		Severity: "info",
 	}
-	env := BuildEnvelope(msg)
+	env := BuildEnvelope(caught(msg))
 	card := env.Attachments[0].Content
 
 	// FactSet should contain only "Severity" (other fields empty).
@@ -184,7 +185,7 @@ func TestBuildEnvelope_NoFactsetWhenAllOptionalEmpty(t *testing.T) {
 		Message: "world",
 		// no Severity, System, Author, Tags, Timestamp
 	}
-	env := BuildEnvelope(msg)
+	env := BuildEnvelope(caught(msg))
 	card := env.Attachments[0].Content
 
 	if len(card.Body) != 1 {
@@ -193,7 +194,7 @@ func TestBuildEnvelope_NoFactsetWhenAllOptionalEmpty(t *testing.T) {
 }
 
 func TestBuildEnvelope_DefaultsWhenTitleAndMessageEmpty(t *testing.T) {
-	env := BuildEnvelope(homerun.Message{Severity: "critical"})
+	env := BuildEnvelope(caught(homerun.Message{Severity: "critical"}))
 	card := env.Attachments[0].Content
 	header := card.Body[0]
 	if header.Items[0].Text != defaultTitle {
@@ -208,11 +209,11 @@ func TestBuildEnvelope_DefaultsWhenTitleAndMessageEmpty(t *testing.T) {
 }
 
 func TestBuildEnvelope_JSONMarshalsCleanly(t *testing.T) {
-	env := BuildEnvelope(homerun.Message{
+	env := BuildEnvelope(caught(homerun.Message{
 		Title:    "boom",
 		Severity: "critical",
 		URL:      "https://x",
-	})
+	}))
 	b, err := json.Marshal(env)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -247,10 +248,10 @@ func TestTeamsNotifier_SendPostsEnvelope(t *testing.T) {
 	defer srv.Close()
 
 	n := NewTeamsNotifier(srv.URL, &http.Client{Timeout: 2 * time.Second})
-	err := n.Send(context.Background(), homerun.Message{
+	err := n.Send(context.Background(), caught(homerun.Message{
 		Title:    "fire",
 		Severity: "critical",
-	})
+	}))
 	if err != nil {
 		t.Fatalf("Send returned error: %v", err)
 	}
@@ -278,7 +279,7 @@ func TestTeamsNotifier_SendReturnsErrorOnNon2xx(t *testing.T) {
 	defer srv.Close()
 
 	n := NewTeamsNotifier(srv.URL, &http.Client{Timeout: 2 * time.Second})
-	err := n.Send(context.Background(), homerun.Message{Title: "x"})
+	err := n.Send(context.Background(), caught(homerun.Message{Title: "x"}))
 	if err == nil {
 		t.Fatal("expected error on 500 response, got nil")
 	}
@@ -289,7 +290,7 @@ func TestTeamsNotifier_SendReturnsErrorOnNon2xx(t *testing.T) {
 
 func TestTeamsNotifier_SendRejectsEmptyURL(t *testing.T) {
 	n := NewTeamsNotifier("", nil)
-	err := n.Send(context.Background(), homerun.Message{Title: "x"})
+	err := n.Send(context.Background(), caught(homerun.Message{Title: "x"}))
 	if err == nil {
 		t.Fatal("expected error when webhook URL is empty")
 	}
@@ -316,7 +317,7 @@ func TestBuildEnvelopeWithCard_ConfiguredFacts(t *testing.T) {
 		{Title: "Banner", Tag: "banner"}, // absent: left out
 		{Title: "Zeit", Field: "timestamp"},
 	}}
-	env := BuildEnvelopeWithCard(msg, card)
+	env := BuildEnvelopeWithCard(caught(msg), card)
 
 	body := env.Attachments[0].Content.Body
 	if len(body) != 2 || body[1].Type != "FactSet" {
@@ -342,11 +343,36 @@ func TestBuildEnvelopeWithCard_ConfiguredFacts(t *testing.T) {
 
 func TestBuildEnvelopeWithCard_EmptyConfigKeepsDefaultFacts(t *testing.T) {
 	msg := homerun.Message{Title: "t", Severity: "info", System: "s"}
-	a := BuildEnvelope(msg)
-	b := BuildEnvelopeWithCard(msg, config.CardConfig{})
+	a := BuildEnvelope(caught(msg))
+	b := BuildEnvelopeWithCard(caught(msg), config.CardConfig{})
 	ja, _ := json.Marshal(a)
 	jb, _ := json.Marshal(b)
 	if string(ja) != string(jb) {
 		t.Errorf("empty card config changed the card:\n%s\n%s", ja, jb)
+	}
+}
+
+// The objectId is the card's last element, small and subtle (#64); without
+// one the card is unchanged.
+func TestBuildEnvelope_ObjectIDFooter(t *testing.T) {
+	msg := homerun.Message{Title: "t", Message: "b", Severity: "warning", System: "s"}
+	card := BuildEnvelope(models.CaughtMessage{Message: msg, ObjectID: "1761000000000-0"}).Attachments[0].Content
+	last := card.Body[len(card.Body)-1]
+	want := models.CardElement{Type: "TextBlock", Text: "objectId 1761000000000-0", Size: "Small", IsSubtle: true, Wrap: true}
+	if !reflect.DeepEqual(last, want) {
+		t.Errorf("footer = %+v, want %+v", last, want)
+	}
+	if card.FallbackText != "[warning] t: b" {
+		t.Errorf("fallbackText = %q, the id stays out of the preview line", card.FallbackText)
+	}
+
+	plain := BuildEnvelope(caught(msg)).Attachments[0].Content
+	if len(plain.Body) != len(card.Body)-1 {
+		t.Errorf("no objectId: body has %d elements, want %d", len(plain.Body), len(card.Body)-1)
+	}
+	for _, e := range plain.Body {
+		if strings.HasPrefix(e.Text, ObjectIDFooterPrefix) {
+			t.Errorf("footer without an objectId: %+v", e)
+		}
 	}
 }
