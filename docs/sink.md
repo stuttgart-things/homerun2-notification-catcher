@@ -162,7 +162,9 @@ Tabs, in the homerun2-core-catcher layout (filters, table, detail panel):
   card the catcher would send. Invalid card
   configs are rejected with the config loader's error.
 
-The tab is kept in the URL (`#msteams`, …). Add `?token=<token>` to the page
+The tab is kept in the URL (`#msteams`, …). `?objectId=<id>` filters the
+notifications to that message and opens it (the catcher's event log links
+there, [HTTP UI](http-ui.md)). Add `?token=<token>` to the page
 URL when a token is set.
 
 The page needs no internet: Pico CSS, the Adaptive Cards renderer, the

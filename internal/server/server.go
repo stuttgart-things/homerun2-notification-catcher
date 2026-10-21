@@ -1,6 +1,8 @@
 // Package server is the catcher's optional, read-only HTTP surface (#22):
-// a health check for the readiness probe and a page (plus JSON) showing the
-// loaded routing config, with secrets redacted. Off unless HTTP_ADDR is set;
+// a health check for the readiness probe, a page (plus JSON) showing the
+// loaded routing config with secrets redacted, the event log of the last
+// dispatched messages with each output's result, and their counters as
+// Prometheus metrics (#49). Off unless HTTP_ADDR is set;
 // the catcher stays a pure consumer otherwise.
 package server
 
@@ -18,6 +20,7 @@ import (
 	"time"
 
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/webui"
 )
 
@@ -32,7 +35,9 @@ var (
 	//go:embed index.html
 	indexSrc  string
 	indexTmpl = template.Must(template.New("index").Funcs(template.FuncMap{
-		"join": strings.Join,
+		"join":  strings.Join,
+		"qs":    queryString,
+		"lower": strings.ToLower,
 	}).Parse(indexSrc))
 )
 
@@ -58,6 +63,13 @@ type Options struct {
 	RedisAddr     string
 	Streams       []string
 	ConsumerGroup string
+
+	// EventsCapacity is how many dispatched messages the event log keeps;
+	// 0 means DefaultEventsCapacity.
+	EventsCapacity int
+	// SinkURL is the notification sink's UI (incl. its BASE_PATH), when the
+	// cluster runs one: each event links to its notification there.
+	SinkURL string
 }
 
 // Server serves the health check and the config view.
@@ -66,12 +78,21 @@ type Server struct {
 
 	mu   sync.RWMutex
 	ping func(context.Context) error
+
+	events *events
 }
 
 // New returns a Server. Until SetPing is called (the catcher is connected),
 // the health check reports Redis as connecting.
 func New(opts Options) *Server {
-	return &Server{opts: opts}
+	var outputs []string
+	if opts.Config != nil {
+		for _, o := range opts.Config.Outputs {
+			outputs = append(outputs, o.Name)
+		}
+	}
+	opts.SinkURL = strings.TrimSuffix(opts.SinkURL, "/")
+	return &Server{opts: opts, events: newEvents(opts.EventsCapacity, outputs)}
 }
 
 // SetPing sets the Redis check the health endpoint runs.
@@ -85,12 +106,15 @@ func (s *Server) SetPing(ping func(context.Context) error) {
 func (s *Server) Handler() http.Handler {
 	app := http.NewServeMux()
 	app.HandleFunc("GET /api/config", webui.Auth(s.opts.Token, s.handleConfigJSON))
+	app.HandleFunc("GET /api/events", webui.Auth(s.opts.Token, s.handleEventsJSON))
+	app.HandleFunc("GET /events", webui.Auth(s.opts.Token, s.handleEventsPage))
 	app.Handle("GET /static/", webui.Static())
 	app.HandleFunc("GET /{$}", webui.Auth(s.opts.Token, s.handleIndex))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	base := s.opts.BasePath
 	if base == "" {
 		mux.Handle("/", app)
@@ -293,33 +317,84 @@ func (s *Server) handleConfigJSON(w http.ResponseWriter, _ *http.Request) {
 }
 
 type indexData struct {
+	Page     string // config | events
 	BasePath string
+	// Token is passed on in links when the page was opened with ?token=.
+	Token string
 	// PortalTheme links homerun2-portal's design tokens: the request came
 	// through the portal's proxy.
 	PortalTheme bool
 	Commit      string
 	Health      Health
 	ConfigView
+
+	// events page
+	Events  []Event
+	Query   EventQuery
+	SinkURL string
+	Results []string
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, s.pageData(r, "config"))
+}
+
+func (s *Server) handleEventsPage(w http.ResponseWriter, r *http.Request) {
+	q, err := s.eventQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	d := s.pageData(r, "events")
+	d.Query = q
+	d.Events = s.events.list(q)
+	d.SinkURL = s.opts.SinkURL
+	d.Results = append([]string{"unrouted"}, notify.Results...)
+	s.render(w, r, d)
+}
+
+func (s *Server) pageData(r *http.Request, page string) indexData {
 	commit := s.opts.Build.Commit
 	if len(commit) > 7 {
 		commit = commit[:7]
 	}
-	var buf bytes.Buffer
-	if err := indexTmpl.Execute(&buf, indexData{
+	return indexData{
+		Page:        page,
 		BasePath:    s.opts.BasePath,
+		Token:       r.URL.Query().Get("token"),
 		PortalTheme: r.Header.Get("X-Forwarded-Prefix") != "",
 		Commit:      commit,
 		Health:      s.health(r.Context()),
 		ConfigView:  s.view(),
-	}); err != nil {
+	}
+}
+
+func (s *Server) render(w http.ResponseWriter, _ *http.Request, d indexData) {
+	var buf bytes.Buffer
+	if err := indexTmpl.Execute(&buf, d); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(buf.Bytes())
+}
+
+// queryString builds "?k=v&…" from key/value pairs, skipping empty values,
+// and adds token when set, so links keep the page's ?token=.
+func queryString(token string, kv ...string) string {
+	v := url.Values{}
+	for i := 0; i+1 < len(kv); i += 2 {
+		if kv[i+1] != "" {
+			v.Set(kv[i], kv[i+1])
+		}
+	}
+	if token != "" {
+		v.Set("token", token)
+	}
+	if len(v) == 0 {
+		return ""
+	}
+	return "?" + v.Encode()
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

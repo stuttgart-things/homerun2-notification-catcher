@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -125,7 +126,11 @@ func runServer() error {
 			RedisAddr:     fmt.Sprintf("%s:%s", redisConfig.Addr, redisConfig.Port),
 			Streams:       streams,
 			ConsumerGroup: consumerGroup,
+			// EVENTS_CAPACITY: dispatched messages the event log keeps.
+			EventsCapacity: intEnv("EVENTS_CAPACITY"),
+			SinkURL:        os.Getenv("SINK_URL"),
 		})
+		dispatcher.OnDispatch = ui.Record
 		srv := &http.Server{Addr: addr, Handler: ui.Handler(), ReadHeaderTimeout: 10 * time.Second}
 		go func() {
 			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -425,6 +430,18 @@ func runAssertCard(args []string) error {
 		fmt.Println("OK", sink.Describe(m))
 	}
 	return nil
+}
+
+// intEnv parses an integer env var; empty or invalid is 0 (the default).
+func intEnv(name string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name)))
+	if err != nil {
+		if os.Getenv(name) != "" {
+			slog.Warn("ignoring invalid integer env var", "name", name, "value", os.Getenv(name))
+		}
+		return 0
+	}
+	return n
 }
 
 // boolEnv parses a permissive truthy env var. Accepts "true", "1", "yes", "on"

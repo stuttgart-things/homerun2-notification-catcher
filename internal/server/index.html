@@ -58,6 +58,24 @@
         .f b { color: var(--hr-muted); font-weight: normal; }
         .muted { color: var(--hr-muted); font-style: italic; }
         .hint { font-size: 0.8rem; color: var(--hr-muted); }
+        .tabs { display: flex; align-items: center; border-bottom: 1px solid var(--hr-border); margin-bottom: 1rem; flex-wrap: wrap; }
+        .tabs a { padding: 0.5rem 1rem; color: var(--hr-muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 0.9rem; }
+        .tabs a:hover { color: var(--hr-text); }
+        .tabs a.active { color: #818cf8; border-bottom-color: var(--hr-accent); font-weight: bold; }
+        .tabs .right { margin-left: auto; font-size: 0.8rem; color: var(--hr-muted); }
+        .filters { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.75rem; font-size: 0.85rem; }
+        .filters a { padding: 0.15rem 0.6rem; border: 1px solid var(--hr-border); border-radius: 1rem; color: var(--hr-muted); text-decoration: none; }
+        .filters a.active { border-color: var(--hr-accent); color: #818cf8; }
+        .r { display: inline-block; font-size: 0.75rem; padding: 0.05rem 0.45rem; border-radius: 0.25rem; margin: 0 0.3rem 0.2rem 0; white-space: nowrap; }
+        .r-sent { background: rgba(34,197,94,0.15); color: var(--hr-ok); }
+        .r-failed { background: rgba(239,68,68,0.18); color: var(--hr-error); }
+        .r-dry-run { background: rgba(234,179,8,0.15); color: var(--hr-warning); }
+        .r-filtered { color: #64748b; }
+        .sev-error, .sev-critical { color: var(--hr-error); font-weight: bold; }
+        .sev-warning { color: var(--hr-warning); font-weight: bold; }
+        .sev-success { color: var(--hr-ok); font-weight: bold; }
+        .sev-info { color: var(--hr-info); font-weight: bold; }
+        .oid { display: block; font-size: 0.75rem; color: var(--hr-muted); font-family: ui-monospace, monospace; }
         .build-footer { background: var(--hr-card); color: #475569; padding: 0.6rem 1.5rem; margin-top: 1rem; display: flex; gap: 1.5rem; font-size: 0.75rem; border-top: 1px solid var(--hr-border); }
         .build-footer .label { color: #64748b; }
         .build-footer .value { color: #818cf8; }
@@ -73,10 +91,17 @@
             </a>
         </div>
         <div class="actions">
-            <a href="{{.BasePath}}/api/config" target="_blank">Config JSON</a>
+            <a href="{{.BasePath}}/api/{{.Page}}{{qs .Token}}" target="_blank">{{if eq .Page "events"}}Events{{else}}Config{{end}} JSON</a>
+            <a href="/metrics" target="_blank">Metrics</a>
         </div>
     </div>
     <main class="container-fluid">
+        <nav class="tabs" aria-label="Views">
+            <a href="{{.BasePath}}/{{qs .Token}}"{{if eq .Page "config"}} class="active"{{end}}>Config</a>
+            <a href="{{.BasePath}}/events{{qs .Token}}"{{if eq .Page "events"}} class="active"{{end}}>Events</a>
+            {{if eq .Page "events"}}<label class="right"><input type="checkbox" id="live" checked> live</label>{{end}}
+        </nav>
+        {{if eq .Page "config"}}
         <dl class="status">
             <div><dt>Redis</dt><dd>{{if eq .Health.Redis "ok"}}<span class="ok">ok</span>{{else if eq .Health.Redis "connecting"}}<span class="warn">connecting</span>{{else}}<span class="bad">{{.Health.Redis}}</span>{{end}} <span class="hint">{{.RedisAddr}}</span></dd></div>
             <div><dt>Streams</dt><dd>{{join .Streams ", "}}</dd></div>
@@ -111,6 +136,37 @@
             </tbody>
         </table>
         </div>
+        {{else}}
+        <div class="filters">
+            <a href="{{.BasePath}}/events{{qs .Token}}"{{if not .Query.Result}} class="active"{{end}}>all</a>
+            {{range .Results}}<a href="{{$.BasePath}}/events{{qs $.Token "result" .}}"{{if eq . $.Query.Result}} class="active"{{end}}>{{.}}</a>{{end}}
+        </div>
+        <p class="hint">The last dispatched messages of this pod, newest first, with what each output did. In memory: per pod, empty after a restart.{{if .SinkURL}} The objectId opens the notification in the sink.{{end}}</p>
+        <div class="overflow-auto">
+        <table>
+            <thead><tr><th>Time</th><th>Message</th><th>Severity</th><th>System</th><th>Outputs</th></tr></thead>
+            <tbody>
+            {{range .Events}}
+                <tr>
+                    <td style="white-space:nowrap">{{.At.Format "2006-01-02 15:04:05"}}</td>
+                    <td>{{.Title}}{{if .ObjectID}}{{if $.SinkURL}}<a class="oid" href="{{$.SinkURL}}/?objectId={{.ObjectID}}#notifications" target="_blank">{{.ObjectID}}</a>{{else}}<span class="oid">{{.ObjectID}}</span>{{end}}{{end}}</td>
+                    <td><span class="sev-{{lower .Severity}}">{{.Severity}}</span></td>
+                    <td>{{.System}}</td>
+                    <td>{{range .Outputs}}<span class="r r-{{.Result}}" title="{{.Result}}{{with .Error}}: {{.}}{{end}}">{{.Output}}{{if ne .Result "sent"}} · {{.Result}}{{end}}</span>{{end}}{{if not .Routed}}<span class="muted">no output matched</span>{{end}}</td>
+                </tr>
+            {{else}}
+                <tr><td colspan="5" class="muted">{{if .Query.Result}}No events with result {{.Query.Result}}.{{else}}No messages dispatched since this pod started.{{end}}</td></tr>
+            {{end}}
+            </tbody>
+        </table>
+        </div>
+        <script>
+            // Reload every 10 s while "live" is on and the tab is visible.
+            setInterval(() => {
+                if (document.getElementById("live").checked && document.visibilityState === "visible") location.reload();
+            }, 10000);
+        </script>
+        {{end}}
     </main>
     <footer class="build-footer">
         <span><span class="label">version</span> <span class="value">{{.Build.Version}}</span></span>

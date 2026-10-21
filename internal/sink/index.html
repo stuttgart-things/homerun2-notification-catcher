@@ -556,8 +556,17 @@
         });
     }
 
+    // ?objectId= (links from the catcher's event log, #22): filter the
+    // notifications to that message and open it.
+    const objectId = new URLSearchParams(location.search).get("objectId");
+    if (objectId) $("nq").value = objectId;
+
     showTab(location.hash.slice(1));
-    load().then(() => { renderAll(true); connect(); }).catch((e) => { $("status").textContent = String(e); });
+    load().then(() => {
+        const n = objectId && state.notifications.find((x) => x.objectId === objectId);
+        if (n) state.selected.notifications = n.id;
+        renderAll(true); connect();
+    }).catch((e) => { $("status").textContent = String(e); });
 
     // --- playground ----------------------------------------------------------
     let lastEnvelope = null;
