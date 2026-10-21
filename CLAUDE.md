@@ -11,7 +11,7 @@ homerun2-notification-catcher — Go consumer for the homerun2 pipeline. Reads `
 - **Library**: `homerun-library/v4` for shared types and helpers
 - **Build**: ko (`.ko.yaml`), no Dockerfile
 - **CI**: Dagger modules (`dagger/main.go`), Taskfile
-- **Deploy**: KCL manifests (`kcl/`), Kustomize, Kubernetes (added in #8)
+- **Deploy**: KCL manifests (`kcl/`), Kustomize, Kubernetes (added in #8); sink opt-in via `config.sinkEnabled` (#54)
 - **Infra**: GitHub Actions, semantic-release, renovate
 
 ## Architecture
@@ -118,7 +118,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
 - `dagger/main.go` — CI functions (Lint, Build, BuildImage, ScanImage, BuildAndTestBinary, IntegrationTest)
-- `kcl/` — *(added in #8)* KCL deployment manifests
+- `kcl/` — *(added in #8)* KCL deployment manifests; `config.sinkEnabled` adds the sink (`<name>-sink` Deployment, Service, optional HTTPRoute + token Secret, #54)
 - `notify.example.yaml` — annotated reference config
 
 ## Environment Variables

@@ -50,11 +50,40 @@ schema NotificationCatcher:
     # Extra env vars folded into the env ConfigMap (envFrom)
     extraEnvVars: {str:str} = {}
 
+    # Notification sink (`notification-catcher sink`, #52) — a stand-in
+    # receiver for the outputs, deployed next to the catcher from the same
+    # image. Off by default so the published kustomize base is unchanged.
+    # Always one replica: posts live in an in-memory store per pod.
+    sinkEnabled: bool = False
+    sinkCapacity: int = 500
+    # Path prefix the sink is served under (BASE_PATH), e.g. "/notify".
+    # Also the HTTPRoute's PathPrefix match. Empty serves at "/".
+    sinkBasePath: str = ""
+    # SINK_TOKEN — emitted into a Secret <name>-sink. Expected to be a Flux
+    # substitution token (${SINK_TOKEN}). Empty leaves the sink open.
+    sinkToken: str = ""
+    sinkServiceType: str = "ClusterIP"
+    sinkServicePort: int = 80
+    sinkContainerPort: int = 8080
+
+    # HTTPRoute (Gateway API) for the sink
+    sinkHttpRouteEnabled: bool = False
+    sinkHttpRouteParentRefName: str = ""
+    sinkHttpRouteParentRefNamespace: str = ""
+    sinkHttpRouteHostname: str = ""
+    sinkHttpRouteAnnotations: {str:str} = {}
+
     # Labels and annotations
     labels: {str:str} = {}
     annotations: {str:str} = {}
 
     check:
         replicas >= 0, "replicas must be >= 0"
+        sinkCapacity >= 1, "sinkCapacity must be >= 1"
+        sinkServicePort >= 1 and sinkServicePort <= 65535, "sinkServicePort must be valid"
+        sinkContainerPort >= 1 and sinkContainerPort <= 65535, "sinkContainerPort must be valid"
+        not sinkBasePath or (sinkBasePath.startswith("/") and not sinkBasePath.endswith("/")), "sinkBasePath must start with / and not end with /"
+        not sinkHttpRouteEnabled or sinkEnabled, "sinkHttpRouteEnabled requires sinkEnabled"
+        not sinkHttpRouteEnabled or sinkHttpRouteParentRefName != "", "sinkHttpRouteParentRefName must be set when sinkHttpRouteEnabled"
         name != "", "name must not be empty"
         namespace != "", "namespace must not be empty"

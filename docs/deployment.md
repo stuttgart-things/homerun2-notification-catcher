@@ -11,11 +11,13 @@ Manifests are generated from KCL in `kcl/`. One file per Kubernetes resource:
 | `namespace.k` | Namespace |
 | `serviceaccount.k` | ServiceAccount |
 | `configmap.k` | `<name>-env` (envFrom'd). `<name>-notify` is caller-supplied. |
-| `secret.k` | `<name>-redis` (Redis password) + `<name>-secrets` (output webhook tokens) |
-| `deploy.k` | Deployment |
+| `secret.k` | `<name>-redis` (Redis password) + `<name>-secrets` (output webhook tokens) + `<name>-sink` (`SINK_TOKEN`, sink only) |
+| `deploy.k` | Deployment; `<name>-sink` Deployment when `config.sinkEnabled` |
+| `service.k` | `<name>-sink` Service (sink only) |
+| `httproute.k` | `<name>-sink` HTTPRoute (sink only, `config.sinkHttpRouteEnabled`) |
 | `main.k` | Entry point — exports `manifests` |
 
-The catcher is a pure consumer — **no Service, no Ingress, no HTTPRoute**.
+The catcher is a pure consumer — **no Service, no Ingress, no HTTPRoute**. The optional notification sink (`config.sinkEnabled`, off by default) is the only HTTP workload the chart emits; see [Notification sink → Deploy with KCL](sink.md#deploy-with-kcl).
 
 ## Rendering
 
