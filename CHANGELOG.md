@@ -1,3 +1,10 @@
+# [3.8.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.7.0...v3.8.0) (2026-10-21)
+
+
+### Features
+
+* **server:** optional read-only HTTP UI with /healthz and the loaded config ([18dbf5f](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/18dbf5f0812d0529065158e507130b82c1044f3e)), closes [#22](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/22)
+
 # [3.7.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.6.0...v3.7.0) (2026-10-21)
 
 
