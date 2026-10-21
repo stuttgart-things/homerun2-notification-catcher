@@ -21,3 +21,53 @@ jobs:
       kcl-profile-file: tests/kcl-deploy-profile.yaml
       kustomize-oci-repo: ghcr.io/stuttgart-things/homerun2-notification-catcher-kustomize
     secrets: inherit # pragma: allowlist secret
+
+  # The sink-only kustomize base (tests/kcl-sink-profile.yaml) as its own
+  # artifact. call-go-release exposes no outputs, so this job reads the
+  # newest tag and pushes only if the sink artifact lacks it: one push per
+  # version, and a failed push is retried by the next run.
+  sink-version:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      push: ${{ steps.check.outputs.push }}
+    steps:
+      - name: Newest tag without a sink artifact
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: stuttgart-things/homerun2-notification-catcher-sink-kustomize
+        run: |
+          VERSION=$(gh api "repos/${GITHUB_REPOSITORY}/tags?per_page=100" --jq '.[].name' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          TOKEN=$(curl -fsS -u "${GITHUB_ACTOR}:${GH_TOKEN}" \
+            "https://ghcr.io/token?scope=repository:${REPO}:pull&service=ghcr.io" | jq -r .token)
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -I \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+            "https://ghcr.io/v2/${REPO}/manifests/${VERSION}")
+          echo "ghcr.io/${REPO}:${VERSION} -> HTTP ${CODE}"
+          if [ -n "$VERSION" ] && [ "$CODE" != "200" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  push-sink-kustomize:
+    needs: sink-version
+    if: needs.sink-version.outputs.push == 'true'
+    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-push-kustomize.yaml@main
+    with:
+      runs-on: ubuntu-latest
+      kcl-source-dir: kcl
+      kcl-profile-file: tests/kcl-sink-profile.yaml
+      kcl-parameters: config.image=ghcr.io/${{ github.repository }}:${{ needs.sink-version.outputs.version }}
+      kustomize-oci-repo: ghcr.io/stuttgart-things/homerun2-notification-catcher-sink-kustomize
+      tag: ${{ needs.sink-version.outputs.version }}
+      ref: ${{ needs.sink-version.outputs.version }}
+    secrets: inherit # pragma: allowlist secret

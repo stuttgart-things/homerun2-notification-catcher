@@ -23,6 +23,7 @@ manifests = [
         secret.secretRedis
         secret.secretOutputs
         deploy.deployment
+        serviceaccount.sinkServiceAccount
         secret.secretSink
         deploy.sinkDeployment
         service.sinkService

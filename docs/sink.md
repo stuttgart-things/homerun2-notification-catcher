@@ -49,17 +49,37 @@ go build .
 
 Storage is in memory: a restart empties it.
 
-## Deploy with KCL
+## Deploy
 
-The chart in `kcl/` deploys the sink next to the catcher when
-`config.sinkEnabled` is set (off by default; the published kustomize base
-has no sink). It emits `<name>-sink`: a Deployment running the catcher image
-with `args: [sink]` (one replica, the store is per pod), a Service, and
-optionally an HTTPRoute and a Secret for `SINK_TOKEN`.
+### Published artifact
+
+Each release publishes the sink as its own kustomize base, next to the
+catcher's:
+
+| Artifact | Profile | Contents |
+|---|---|---|
+| `ghcr.io/stuttgart-things/homerun2-notification-catcher-kustomize:<version>` | `tests/kcl-deploy-profile.yaml` | the catcher, no sink |
+| `ghcr.io/stuttgart-things/homerun2-notification-catcher-sink-kustomize:<version>` | `tests/kcl-sink-profile.yaml` | `<name>-sink` ServiceAccount, Deployment, Service; image pinned to `<version>` |
+
+A cluster opts in by deploying the second artifact as its own app (Argo
+Application, Flux Kustomization) in the catcher's namespace. It has no
+HTTPRoute (hostname and gateway are per cluster, the consumer adds one: a
+`PathPrefix: /` route to Service `<name>-sink` port 80) and no token. PRs
+that touch `kcl/` push both as `pr-<n>-<sha>`.
+
+### KCL
+
+The chart in `kcl/` deploys the sink when `config.sinkEnabled` is set (off
+by default), next to the catcher, or alone with `config.catcherEnabled:
+false`. It emits `<name>-sink`: a ServiceAccount (no token mounted), a
+Deployment running the catcher image with `args: [sink]` (one replica, the
+store is per pod), a Service, and optionally an HTTPRoute and a Secret for
+`SINK_TOKEN`.
 
 | Profile key | Default | Meaning |
 |---|---|---|
-| `config.sinkEnabled` | `false` | Emit the sink Deployment and Service |
+| `config.catcherEnabled` | `true` | Emit the catcher; `false` renders the sink alone |
+| `config.sinkEnabled` | `false` | Emit the sink ServiceAccount, Deployment and Service |
 | `config.sinkCapacity` | `500` | `--capacity` |
 | `config.sinkBasePath` | *(empty)* | `BASE_PATH`, and the HTTPRoute's `PathPrefix` (e.g. `/notify`) |
 | `config.sinkToken` | *(empty)* | Emits Secret `<name>-sink` (key `token`) read as `SINK_TOKEN`; use a Flux token like `${SINK_TOKEN}` |
@@ -69,9 +89,11 @@ optionally an HTTPRoute and a Secret for `SINK_TOKEN`.
 | `config.sinkHttpRouteHostname` | *(empty)* | Route hostname |
 | `config.sinkHttpRouteAnnotations` | `{}` | Extra route annotations |
 
+The profiles in `tests/` are flat `config.*` maps for the Dagger KCL module
+(`task render-manifests-quick`); with the kcl CLI pass the keys as `-D`:
+
 ```bash
-cd kcl && kcl run -Y ../tests/kcl-deploy-profile.yaml \
-  -D config.sinkEnabled=true -D config.sinkBasePath=/notify \
+cd kcl && kcl run -D config.sinkEnabled=true -D config.sinkBasePath=/notify \
   -D config.sinkHttpRouteEnabled=true -D config.sinkHttpRouteParentRefName=<gateway> \
   -D config.sinkHttpRouteHostname=<host>
 ```
