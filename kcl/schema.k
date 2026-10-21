@@ -50,6 +50,12 @@ schema NotificationCatcher:
     # Extra env vars folded into the env ConfigMap (envFrom)
     extraEnvVars: {str:str} = {}
 
+    # The catcher itself (Deployment, ServiceAccount, env ConfigMap, its
+    # Secrets). False with sinkEnabled renders the sink alone — the profile
+    # behind the separate <name>-sink-kustomize artifact
+    # (tests/kcl-sink-profile.yaml).
+    catcherEnabled: bool = True
+
     # Notification sink (`notification-catcher sink`, #52) — a stand-in
     # receiver for the outputs, deployed next to the catcher from the same
     # image. Off by default so the published kustomize base is unchanged.
@@ -79,6 +85,7 @@ schema NotificationCatcher:
 
     check:
         replicas >= 0, "replicas must be >= 0"
+        catcherEnabled or sinkEnabled, "catcherEnabled or sinkEnabled must be set"
         sinkCapacity >= 1, "sinkCapacity must be >= 1"
         sinkServicePort >= 1 and sinkServicePort <= 65535, "sinkServicePort must be valid"
         sinkContainerPort >= 1 and sinkContainerPort <= 65535, "sinkContainerPort must be valid"

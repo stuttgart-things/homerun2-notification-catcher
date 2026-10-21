@@ -1,0 +1,25 @@
+# homerun2-notification-catcher — sink-only KCL profile.
+#
+# Rendered into the separate kustomize OCI artifact
+# ghcr.io/stuttgart-things/homerun2-notification-catcher-sink-kustomize
+# (release.yaml, push-kustomize-pr.yaml): the notification sink (#52) as its
+# own app, next to — not inside — the catcher's base. A cluster opts in by
+# deploying this artifact; the catcher base (kcl-deploy-profile.yaml) stays
+# sink-free.
+#
+# Emits <name>-sink ServiceAccount, Deployment and Service. No HTTPRoute:
+# hostname and gateway are per cluster, so the consumer (Argo chart, Flux
+# route component) brings the route. No token: in-cluster outputs reach the
+# sink without one; set config.sinkToken when exposing it beyond the cluster.
+#
+# The release pins config.image to the released tag (kcl-parameters).
+
+config.image: ghcr.io/stuttgart-things/homerun2-notification-catcher:latest
+config.namespace: homerun2
+
+config.catcherEnabled: false
+config.sinkEnabled: true
+config.sinkCapacity: 500
+
+config.logFormat: json
+config.logLevel: info

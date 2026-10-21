@@ -118,7 +118,8 @@ Branch-per-issue with PR and merge to main.
 - `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
 - `dagger/main.go` — CI functions (Lint, Build, BuildImage, ScanImage, BuildAndTestBinary, IntegrationTest)
-- `kcl/` — *(added in #8)* KCL deployment manifests; `config.sinkEnabled` adds the sink (`<name>-sink` Deployment, Service, optional HTTPRoute + token Secret, #54)
+- `kcl/` — *(added in #8)* KCL deployment manifests; `config.sinkEnabled` adds the sink (`<name>-sink` ServiceAccount, Deployment, Service, optional HTTPRoute + token Secret, #54); `config.catcherEnabled: false` renders it alone
+- `tests/kcl-deploy-profile.yaml` / `tests/kcl-sink-profile.yaml` — flat `config.*` profiles (Dagger KCL module, not `kcl run -Y`) for the two published kustomize bases: `…-kustomize` (catcher) and `…-sink-kustomize` (sink only)
 - `notify.example.yaml` — annotated reference config
 
 ## Environment Variables

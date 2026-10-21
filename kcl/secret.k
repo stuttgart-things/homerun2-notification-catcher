@@ -41,7 +41,7 @@ secretRedis = {
     data: {
         password: base64.encode(config.redisPassword)
     }
-} if config.redisPassword else None
+} if config.catcherEnabled and config.redisPassword else None
 
 secretOutputs = {
     apiVersion: "v1"
@@ -53,7 +53,7 @@ secretOutputs = {
     }
     type: "Opaque"
     stringData: config.outputSecrets
-} if config.outputSecrets else None
+} if config.catcherEnabled and config.outputSecrets else None
 
 secretSink = {
     apiVersion: "v1"

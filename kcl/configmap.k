@@ -37,7 +37,7 @@ configMapEnv = {
         labels: labels.commonLabels
     }
     data: _envData | config.extraEnvVars
-}
+} if config.catcherEnabled else None
 
 configMapNotify = {
     apiVersion: "v1"
@@ -50,4 +50,4 @@ configMapNotify = {
     data: {
         "config.yaml": config.notifyConfig
     }
-} if config.notifyConfig else None
+} if config.catcherEnabled and config.notifyConfig else None

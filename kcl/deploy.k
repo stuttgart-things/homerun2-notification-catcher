@@ -159,7 +159,7 @@ deployment = {
             }
         }
     }
-}
+} if config.catcherEnabled else None
 
 sinkDeployment = {
     apiVersion: "apps/v1"
@@ -186,7 +186,8 @@ sinkDeployment = {
                 labels: labels.sinkLabels
             }
             spec: {
-                serviceAccountName: config.name
+                serviceAccountName: labels.sinkName
+                automountServiceAccountToken: False
                 containers: [
                     {
                         name: "sink"

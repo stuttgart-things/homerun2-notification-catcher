@@ -26,3 +26,13 @@ jobs:
       kustomize-oci-repo: ghcr.io/stuttgart-things/homerun2-notification-catcher-kustomize
       tag: pr-${{ github.event.number }}-${{ github.event.pull_request.head.sha }}
     secrets: inherit # pragma: allowlist secret
+
+  push-sink-kustomize:
+    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-push-kustomize.yaml@main
+    with:
+      runs-on: ubuntu-latest
+      kcl-source-dir: kcl
+      kcl-profile-file: tests/kcl-sink-profile.yaml
+      kustomize-oci-repo: ghcr.io/stuttgart-things/homerun2-notification-catcher-sink-kustomize
+      tag: pr-${{ github.event.number }}-${{ github.event.pull_request.head.sha }}
+    secrets: inherit # pragma: allowlist secret

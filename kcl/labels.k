@@ -26,6 +26,7 @@ _notifyConfig = option("config.notifyConfig")
 _outputSecrets = option("config.outputSecrets") or {}
 _extraEnvVars = option("config.extraEnvVars") or {}
 
+_catcherEnabled = option("config.catcherEnabled")
 _sinkEnabled = option("config.sinkEnabled")
 _sinkCapacity = option("config.sinkCapacity")
 _sinkBasePath = option("config.sinkBasePath")
@@ -74,6 +75,8 @@ config: schema.NotificationCatcher = schema.NotificationCatcher {
         outputSecrets = _outputSecrets
     if _extraEnvVars:
         extraEnvVars = _extraEnvVars
+    if _catcherEnabled != None:
+        catcherEnabled = _catcherEnabled in [True, "True", "true"]
     if _sinkEnabled:
         sinkEnabled = _sinkEnabled in [True, "True", "true"]
     if _sinkCapacity:
