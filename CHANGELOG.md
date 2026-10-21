@@ -1,3 +1,10 @@
+# [3.5.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.4.0...v3.5.0) (2026-10-21)
+
+
+### Features
+
+* **kcl:** publish the sink as its own kustomize artifact ([624d46f](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/624d46f964b7ee06ce5685b9bc0bfe1546fe0804)), closes [#55](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/55)
+
 # [3.4.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.3.1...v3.4.0) (2026-10-21)
 
 
