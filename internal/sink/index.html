@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOMERUN² · Notification sink</title>
+    <script>
+        // In homerun2-portal's iframe the portal shows the brand and the
+        // service name: hr-embedded switches to the compact header. Set before
+        // the first paint, so the big banner never flashes.
+        if (window.self !== window.top) document.documentElement.classList.add('hr-embedded');
+    </script>
+    <link rel="icon" type="image/png" href="{{.BasePath}}/static/favicon.png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/adaptivecards@3.0.4/dist/adaptivecards.min.js"></script>
+    <style>
+        /* The homerun2 design tokens: a copy of homerun2-portal's
+           static/homerun2-tokens.css for running without the portal. Behind
+           it the page also links the portal's file (after this block), and
+           its :root wins over this zero-specificity copy. */
+        :where(:root) {
+            --hr-bg: #0b1120;
+            --hr-surface: #111827;
+            --hr-card: #1e293b;
+            --hr-border: #334155;
+            --hr-text: #e2e8f0;
+            --hr-muted: #94a3b8;
+            --hr-accent: #6366f1;
+            --hr-accent-2: #a855f7;
+            --hr-accent-3: #f97316;
+            --hr-ok: #22c55e;
+            --hr-info: #38bdf8;
+            --hr-warning: #eab308;
+            --hr-error: #ef4444;
+        }
+        :root { --pico-font-size: 14px; }
+        body { background: var(--hr-bg); }
+        .severity-error { color: var(--hr-error); font-weight: bold; }
+        .severity-warning { color: var(--hr-warning); font-weight: bold; }
+        .severity-success { color: var(--hr-ok); font-weight: bold; }
+        .severity-info { color: var(--hr-info); font-weight: bold; }
+        .severity-debug { color: #64748b; }
+        .header-bar { background: linear-gradient(135deg, var(--hr-accent) 0%, var(--hr-accent-2) 100%); color: #f8fafc; padding: 1.8rem 1.5rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid var(--hr-accent-3); }
+        .header-bar h1 { margin: 0; font-family: 'Press Start 2P', cursive; font-size: 2.2rem; color: #ffffff; letter-spacing: 0.08em; text-shadow: 3px 3px 0px rgba(0,0,0,0.3); }
+        .header-bar .subtitle { font-family: 'Press Start 2P', cursive; font-size: 0.7rem; color: #fbbf24; margin-top: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase; }
+        .header-bar .actions { display: flex; gap: 0.5rem; }
+        .header-bar a { color: #e2e8f0; font-size: 0.85rem; }
+        .header-bar a:hover { color: #f8fafc; }
+        /* The compact header inside homerun2-portal (README there, "Embedded
+           header"): one line on the portal's surface, no brand, the subtitle
+           on the left and the actions on the right. */
+        .hr-embedded .header-bar { font-family: var(--hr-font, system-ui, sans-serif); background: var(--hr-surface); border-bottom: 1px solid var(--hr-border); min-height: 44px; padding: 6px 16px; align-items: center; }
+        .hr-embedded .header-bar h1 { display: none; }
+        .hr-embedded .header-bar .subtitle { font-family: inherit; font-size: 13px; color: var(--hr-muted); margin: 0; letter-spacing: normal; text-transform: none; }
+        .hr-embedded .header-bar .actions a { font-size: 12px; color: var(--hr-accent); text-decoration: none; }
+        table { font-size: 0.85rem; }
+        thead th { background: var(--hr-card); color: #818cf8; text-transform: uppercase; }
+        .clickable { cursor: pointer; }
+        .clickable:hover, .clickable.selected { background: rgba(99,102,241,0.15); }
+        .detail-panel { background: var(--hr-card); border: 1px solid var(--hr-border); padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; }
+        .detail-panel dt { color: #818cf8; font-weight: bold; }
+        .detail-panel dd { margin-bottom: 0.5rem; margin-left: 0; color: var(--hr-text); word-break: break-word; }
+        .detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; }
+        .detail-head h3 { margin: 0; }
+        .detail-head a { font-size: 0.85rem; }
+        .detail-grid { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.4fr); gap: 1.5rem; }
+        @media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr; } }
+        .preview-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; color: #818cf8; font-weight: bold; }
+        .preview-head select { width: auto; margin: 0; padding: 0.2rem 2rem 0.2rem 0.5rem; font-size: 0.8rem; }
+        .teams-frame { border-radius: 6px; padding: 12px; }
+        .teams-frame.dark { background: #1f1f1f; }
+        .teams-frame.light { background: #f5f5f5; }
+        .teams-frame .ac-adaptiveCard { border-radius: 4px; }
+        /* Keep Pico's table look out of the card's FactSet. */
+        .teams-frame table { width: auto; margin: 0; font-size: inherit; }
+        .teams-frame td, .teams-frame th { background: transparent; border: 0; color: inherit; font-size: inherit; padding: 0 8px 2px 0; }
+        .fallback-line { margin-top: 0.75rem; font-size: 0.8rem; color: var(--hr-muted); }
+        .fallback-line strong { color: #818cf8; font-weight: normal; }
+        pre.payload { font-size: 0.75rem; max-height: 420px; overflow: auto; margin: 0; }
+        details > summary { font-size: 0.85rem; color: #818cf8; }
+        .controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+        .controls input[type="search"] { max-width: 250px; margin: 0; }
+        .controls select { max-width: 200px; margin: 0; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+        .tabs { display: flex; align-items: center; border-bottom: 1px solid var(--hr-border); margin-bottom: 1rem; flex-wrap: wrap; }
+        .tabs a { padding: 0.5rem 1rem; color: var(--hr-muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-size: 0.9rem; }
+        .tabs a:hover { color: var(--hr-text); }
+        .tabs a.active { color: #818cf8; border-bottom-color: var(--hr-accent); font-weight: bold; }
+        .tabs .n { font-size: 0.75rem; color: var(--hr-muted); margin-left: 0.25rem; }
+        .tabs .live { margin-left: auto; font-size: 0.8rem; color: var(--hr-muted); }
+        .tabs .live.on::before { content: "● "; color: var(--hr-ok); }
+        .chan { display: inline-block; white-space: nowrap; margin: 0 0.6rem 0.15rem 0; color: var(--hr-text); text-decoration: none; }
+        .chan:hover { color: #818cf8; }
+        .muted { color: var(--hr-muted); font-style: italic; }
+        .hint { font-size: 0.8rem; color: var(--hr-muted); margin-top: 0.75rem; }
+        .kind { display: inline-block; font-size: 0.7rem; font-weight: bold; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.1rem 0.45rem; border-radius: 0.25rem; margin-right: 0.35rem; }
+        .kind-msteams { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+        .kind-webhook { background: rgba(249,115,22,0.18); color: #fdba74; }
+        .filter-count { font-size: 0.85rem; color: var(--pico-muted-color); }
+        .filter-count strong { color: #818cf8; }
+        .empty-hint { text-align: center; color: var(--pico-muted-color); }
+        [data-panel="playground"] textarea { font-family: ui-monospace, monospace; font-size: 0.8rem; min-height: 170px; }
+        #pg-error { color: var(--hr-error); white-space: pre-wrap; font-size: 0.85rem; }
+        .fallback-card { padding: 12px; border-left: 4px solid #475569; background: #292929; color: #fff; }
+        .light .fallback-card { background: #fff; color: #242424; }
+        .fallback-card.attention { border-left-color: #c4314b; }
+        .fallback-card.warning { border-left-color: #f8d22a; }
+        .fallback-card.good { border-left-color: #237b4b; }
+        .fallback-card .t { font-size: 1.1rem; font-weight: 600; }
+        .fallback-card table { margin: 8px 0 0; font-size: 0.85rem; }
+        .fallback-card td { padding: 2px 12px 2px 0; border: 0; background: transparent; color: inherit; }
+        .fallback-card td:first-child { font-weight: 600; }
+        .build-footer { background: var(--hr-card); color: #475569; padding: 0.6rem 1.5rem; margin-top: 1rem; display: flex; gap: 1.5rem; font-size: 0.75rem; border-top: 1px solid var(--hr-border); }
+        .build-footer .label { color: #64748b; }
+        .build-footer .value { color: #818cf8; }
+    </style>
+    {{if .PortalTheme}}<link rel="stylesheet" href="/static/homerun2-tokens.css">{{end}}
+</head>
+<body data-base="{{.BasePath}}">
+    <div class="header-bar">
+        <div>
+            <a href="{{.BasePath}}/" style="text-decoration:none;color:inherit">
+                <h1>HOMERUN²</h1>
+                <div class="subtitle">Notification sink</div>
+            </a>
+        </div>
+        <div class="actions">
+            <a href="{{.BasePath}}/api/notifications" id="api-link" target="_blank">Export JSON</a>
+        </div>
+    </div>
+    <main class="container-fluid">
+        <nav class="tabs" aria-label="Views">
+            <a href="#notifications" data-tab="notifications">Notifications <span class="n" id="n-notifications"></span></a>
+            <a href="#msteams" data-tab="msteams">MS Teams <span class="n" id="n-msteams"></span></a>
+            <a href="#webhook" data-tab="webhook">Webhook <span class="n" id="n-webhook"></span></a>
+            <a href="#playground" data-tab="playground">Card playground</a>
+            <span class="live" id="status">connecting…</span>
+        </nav>
+
+        <!-- Every notification once, with the channels it went to. -->
+        <section data-panel="notifications">
+            <div class="controls">
+                <input type="search" id="nq" placeholder="Search...">
+                <select id="nseverity"><option value="">All Severities</option></select>
+                <select id="nsystem"><option value="">All Systems</option></select>
+                <select id="nchannel"><option value="">All Channels</option></select>
+            </div>
+            <div id="n-detail"></div>
+            <table>
+                <thead><tr><th>Title</th><th>Severity</th><th>System</th><th>Author</th><th>Time</th><th>Channels</th></tr></thead>
+                <tbody id="n-rows"></tbody>
+            </table>
+            <span class="filter-count" id="n-count"></span>
+            <p class="hint" id="inbox-hint" hidden>Only notifications that reached a channel are listed. To list everything the catcher caught, add a catch-all <code>webhook</code> output without filters to <code>{{.BasePath}}/inbox</code>.</p>
+        </section>
+
+        <!-- One panel per sink kind: the posts as that system received them. -->
+        <section data-panel="msteams" hidden>
+            <div class="controls">
+                <input type="search" id="tq" placeholder="Search...">
+                <select id="tchannel"><option value="">All Channels</option></select>
+            </div>
+            <div id="t-detail"></div>
+            <table>
+                <thead><tr><th>Received</th><th>Title</th><th>Severity</th><th>Channel</th></tr></thead>
+                <tbody id="t-rows"></tbody>
+            </table>
+            <span class="filter-count" id="t-count"></span>
+        </section>
+
+        <section data-panel="webhook" hidden>
+            <div class="controls">
+                <input type="search" id="wq" placeholder="Search...">
+                <select id="wchannel"><option value="">All Channels</option></select>
+            </div>
+            <div id="w-detail"></div>
+            <table>
+                <thead><tr><th>Received</th><th>Title</th><th>Severity</th><th>Channel</th></tr></thead>
+                <tbody id="w-rows"></tbody>
+            </table>
+            <span class="filter-count" id="w-count"></span>
+        </section>
+
+        <section data-panel="playground" hidden>
+            <div class="detail-panel">
+                <div class="detail-grid">
+                    <div>
+                        <label for="pg-message">homerun.Message (JSON)</label>
+                        <textarea id="pg-message">{
+  "title": "disk almost full",
+  "message": "/var is at 91% on node-3",
+  "severity": "warning",
+  "system": "kubernetes",
+  "author": "omni-pitcher",
+  "tags": "infra,storage,cluster=labda",
+  "url": "https://grafana.example/d/disk"
+}</textarea>
+                        <label for="pg-card">Output <code>card:</code> block (YAML, empty = default card)</label>
+                        <textarea id="pg-card" placeholder="facts:&#10;  - title: Cluster&#10;    tag: cluster&#10;  - title: System&#10;    field: system"></textarea>
+                        <button id="pg-render" type="button">Render</button>
+                        <div id="pg-error"></div>
+                    </div>
+                    <div id="pg-out"><p class="hint">Renders the card the catcher's msteams output builds for this message.</p></div>
+                </div>
+            </div>
+        </section>
+    </main>
+    <div class="build-footer">
+        <div style="display:flex;gap:1.5rem">
+            <div><span class="label">version</span> <span class="value">{{.Version}}</span></div>
+            <div><span class="label">commit</span> <span class="value">{{.Commit}}</span></div>
+            <div><span class="label">built</span> <span class="value">{{.Date}}</span></div>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem"><span class="label">a</span> <a href="https://github.com/stuttgart-things" target="_blank" style="color:#818cf8;text-decoration:none">stuttgart-things</a> <span class="label">project</span> <img src="https://raw.githubusercontent.com/stuttgart-things/docs/main/hugo/sthings-logo.png" alt="sthings" style="height:24px;"></div>
+    </div>
+
+<script>
+(function () {
+    "use strict";
+    const base = document.body.dataset.base || "";
+    const token = new URLSearchParams(location.search).get("token");
+    const url = (path) => {
+        const u = base + path;
+        return token ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : u;
+    };
+    const $ = (id) => document.getElementById(id);
+    const el = (tag, props, ...children) => {
+        const e = Object.assign(document.createElement(tag), props || {});
+        children.forEach((c) => c != null && c !== "" && e.append(c));
+        return e;
+    };
+    $("api-link").href = url("/api/notifications");
+
+    const KIND_LABEL = { msteams: "MS Teams", webhook: "Webhook" };
+    const SEVERITIES = ["critical", "error", "warning", "success", "info", "debug"];
+    const state = {
+        tab: "notifications",
+        notifications: [],          // newest first
+        posts: [],                  // newest first
+        selected: { notifications: null, msteams: null, webhook: null },
+    };
+    let cardTheme = "dark";
+    try { cardTheme = localStorage.getItem("sink-card-theme") || "dark"; } catch (e) {}
+
+    function severityClass(sev) {
+        switch ((sev || "").toLowerCase()) {
+            case "critical": case "error": return "severity-error";
+            case "warning": return "severity-warning";
+            case "success": return "severity-success";
+            case "debug": return "severity-debug";
+            default: return "severity-info";
+        }
+    }
+    const sevSpan = (sev) => el("span", { className: severityClass(sev), style: "text-transform:uppercase", textContent: sev || "" });
+    const fmtTime = (t) => { const d = new Date(t); return isNaN(d) ? (t || "") : d.toLocaleDateString("sv") + " " + d.toLocaleTimeString("sv"); };
+    const channelKey = (kind, channel) => kind + "/" + channel;
+
+    // chan is one channel a notification went to; clicking it opens the post
+    // in its system's tab.
+    function chan(d) {
+        const a = el("a", { href: "#" + d.kind, className: "chan", title: "Show in " + KIND_LABEL[d.kind] },
+            el("span", { className: "kind kind-" + d.kind, textContent: KIND_LABEL[d.kind] || d.kind }), d.channel);
+        a.onclick = (e) => { e.preventDefault(); e.stopPropagation(); state.selected[d.kind] = d.postId; showTab(d.kind); };
+        return a;
+    }
+
+    function fillSelect(sel, values, labelOf) {
+        const keep = sel.value;
+        const first = sel.options[0];
+        sel.replaceChildren(first, ...values.map((v) => el("option", { value: v, textContent: labelOf ? labelOf(v) : v })));
+        sel.value = values.includes(keep) || keep === "" ? keep : "";
+    }
+    const uniq = (xs) => [...new Set(xs.filter(Boolean))].sort();
+
+    // --- tabs ----------------------------------------------------------------
+    function showTab(tab) {
+        if (!["notifications", "msteams", "webhook", "playground"].includes(tab)) tab = "notifications";
+        state.tab = tab;
+        if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
+        document.querySelectorAll("[data-tab]").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+        document.querySelectorAll("[data-panel]").forEach((p) => { p.hidden = p.dataset.panel !== tab; });
+        renderAll(true);
+    }
+    document.querySelectorAll("[data-tab]").forEach((a) => {
+        a.onclick = (e) => { e.preventDefault(); showTab(a.dataset.tab); };
+    });
+    window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+
+    // --- Adaptive Card rendering ---------------------------------------------
+    // Host config approximating Teams' light and dark themes.
+    function hostConfig(dark) {
+        const fg = (d, l) => ({ default: d, subtle: l });
+        const fgSet = dark ? {
+            default: fg("#FFFFFF", "#ADADAD"), dark: fg("#000000", "#333333"), light: fg("#FFFFFF", "#ADADAD"),
+            accent: fg("#7F85F5", "#AAB0FA"), good: fg("#92C353", "#A8D07A"), warning: fg("#F8D22A", "#FADF6A"),
+            attention: fg("#E5737F", "#EE969F")
+        } : {
+            default: fg("#242424", "#616161"), dark: fg("#000000", "#333333"), light: fg("#FFFFFF", "#F0F0F0"),
+            accent: fg("#5B5FC7", "#7F85F5"), good: fg("#237B4B", "#4E9A6A"), warning: fg("#835B00", "#A87A1A"),
+            attention: fg("#C4314B", "#D45A6E")
+        };
+        const bg = dark
+            ? { default: "#292929", emphasis: "#1F1F1F", good: "#0D2E0D", attention: "#3E1F25", warning: "#463100", accent: "#2F2F4A" }
+            : { default: "#FFFFFF", emphasis: "#F5F5F5", good: "#E7F2DA", attention: "#FCF4F6", warning: "#FBF6D9", accent: "#E8EBFA" };
+        const containerStyles = {};
+        for (const k of Object.keys(bg)) containerStyles[k] = { backgroundColor: bg[k], foregroundColors: fgSet };
+        return {
+            fontFamily: "Segoe UI, system-ui, sans-serif",
+            supportsInteractivity: true,
+            spacing: { small: 4, default: 8, medium: 12, large: 16, extraLarge: 24, padding: 12 },
+            fontSizes: { small: 12, default: 14, medium: 14, large: 18, extraLarge: 24 },
+            fontWeights: { lighter: 300, default: 400, bolder: 600 },
+            containerStyles: containerStyles,
+            factSet: { title: { weight: "bolder", wrap: true, maxWidth: 150 }, value: { wrap: true }, spacing: 8 },
+            actions: { maxActions: 6, buttonSpacing: 8, showCard: { actionMode: "inline" }, actionsOrientation: "horizontal", actionAlignment: "left" }
+        };
+    }
+
+    function renderCard(content) {
+        if (window.AdaptiveCards) {
+            try {
+                const card = new AdaptiveCards.AdaptiveCard();
+                card.hostConfig = new AdaptiveCards.HostConfig(hostConfig(cardTheme === "dark"));
+                card.onExecuteAction = (a) => { if (a.url) window.open(a.url, "_blank", "noopener"); };
+                card.parse(content);
+                const out = card.render();
+                if (out) return out;
+            } catch (e) {
+                console.warn("adaptivecards render failed", e);
+            }
+        }
+        return fallbackCard(content);
+    }
+
+    // Minimal renderer for when the adaptivecards script cannot load
+    // (offline cluster): title, text blocks, facts, severity stripe, links.
+    function fallbackCard(content) {
+        const box = el("div", { className: "fallback-card" });
+        let first = true;
+        const walk = (items) => (items || []).forEach((e) => {
+            if (e.type === "Container" && e.style && box.classList.length === 1) box.classList.add(e.style);
+            if (e.type === "TextBlock") {
+                box.append(el("div", { className: first ? "t" : "", textContent: e.text || "" }));
+                first = false;
+            } else if (e.type === "FactSet") {
+                const t = el("table");
+                (e.facts || []).forEach((f) => {
+                    const tr = t.insertRow();
+                    tr.insertCell().textContent = f.title;
+                    tr.insertCell().textContent = f.value;
+                });
+                box.append(t);
+            }
+            walk(e.items);
+        });
+        walk(content && content.body);
+        ((content && content.actions) || []).forEach((a) => {
+            if (a.type !== "Action.OpenUrl" || !/^https?:/i.test(a.url || "")) return;
+            box.append(el("div", {}, el("a", { href: a.url, target: "_blank", rel: "noopener", textContent: a.title || a.url })));
+        });
+        return box;
+    }
+
+    // teamsPreview shows a Teams envelope the way Teams would: the cards on
+    // the channel background, plus the plain-text line previews show.
+    function teamsPreview(envelope, fallbackText, onTheme) {
+        const sel = el("select", {}, el("option", { value: "dark", textContent: "Teams dark" }), el("option", { value: "light", textContent: "Teams light" }));
+        sel.value = cardTheme;
+        sel.onchange = () => {
+            cardTheme = sel.value;
+            try { localStorage.setItem("sink-card-theme", cardTheme); } catch (e) {}
+            onTheme();
+        };
+        const frame = el("div", { className: "teams-frame " + cardTheme });
+        ((envelope && envelope.attachments) || []).forEach((a) => frame.append(renderCard(a.content)));
+        return el("div", {},
+            el("div", { className: "preview-head" }, el("span", { textContent: "Card" }), sel),
+            frame,
+            el("div", { className: "fallback-line" },
+                el("strong", { textContent: "Notification preview: " }),
+                fallbackText || "(no fallbackText: Teams shows \"Card - access it on…\")"));
+    }
+
+    function detailPanel(title, onClose, ...body) {
+        const close = el("a", { href: "#", textContent: "✕ Close" });
+        close.onclick = (e) => { e.preventDefault(); onClose(); };
+        return el("div", { className: "detail-panel" },
+            el("div", { className: "detail-head" }, el("h3", { textContent: title || "(no title)" }), close),
+            ...body);
+    }
+    function dlOf(rows) {
+        const dl = el("dl");
+        rows.forEach(([k, v]) => { if (v) dl.append(el("dt", { textContent: k }), el("dd", {}, v)); });
+        return dl;
+    }
+    const emptyRow = (cols, text) => el("tr", {}, el("td", { colSpan: cols, className: "empty-hint", textContent: text }));
+    const count = (id, shown, all, noun) => $(id).replaceChildren(el("strong", { textContent: shown }), " / " + all + " " + noun);
+
+    // --- Notifications tab ---------------------------------------------------
+    function nMatches(n) {
+        const sev = $("nseverity").value, sys = $("nsystem").value, ch = $("nchannel").value;
+        if (sev && (n.severity || "").toLowerCase() !== sev) return false;
+        if (sys && n.system !== sys) return false;
+        if (ch === "-" && n.deliveries.length) return false;
+        if (ch && ch !== "-" && !n.deliveries.some((d) => channelKey(d.kind, d.channel) === ch)) return false;
+        const q = $("nq").value.trim().toLowerCase();
+        return !q || [n.title, n.message, n.system, n.author, n.tags].join("\n").toLowerCase().includes(q);
+    }
+
+    function renderNotifications(withDetail) {
+        const all = state.notifications;
+        fillSelect($("nseverity"), SEVERITIES);
+        fillSelect($("nsystem"), uniq(all.map((n) => n.system)));
+        const chans = uniq(all.flatMap((n) => n.deliveries.map((d) => channelKey(d.kind, d.channel))));
+        const hasInbox = all.some((n) => n.inbox);
+        fillSelect($("nchannel"), hasInbox ? chans.concat("-") : chans,
+            (v) => v === "-" ? "Not routed" : KIND_LABEL[v.split("/")[0]] + " · " + v.split("/").slice(1).join("/"));
+        $("inbox-hint").hidden = hasInbox || all.length === 0;
+
+        const shown = all.filter(nMatches);
+        const rows = shown.map((n) => {
+            const chans = n.deliveries.length
+                ? n.deliveries.map(chan)
+                : [el("span", { className: "muted", textContent: "not routed" })];
+            const tr = el("tr", { className: "clickable" + (state.selected.notifications === n.id ? " selected" : "") },
+                el("td", { textContent: n.title || "(no title)" }),
+                el("td", {}, sevSpan(n.severity)),
+                el("td", { textContent: n.system || "" }),
+                el("td", { textContent: n.author || "" }),
+                el("td", { textContent: fmtTime(n.firstSeen) }),
+                el("td", {}, ...chans));
+            tr.onclick = () => { state.selected.notifications = state.selected.notifications === n.id ? null : n.id; renderNotifications(true); };
+            return tr;
+        });
+        if (!rows.length) rows.push(emptyRow(6, all.length ? "No notifications match the current filters"
+            : "No notifications yet. Point the catcher's outputs at " + base + "/teams/<channel> or " + base + "/webhook/<channel>."));
+        $("n-rows").replaceChildren(...rows);
+        count("n-count", shown.length, all.length, "notifications");
+        if (withDetail) renderNotificationDetail();
+    }
+
+    function renderNotificationDetail() {
+        const n = state.notifications.find((x) => x.id === state.selected.notifications);
+        if (!n) { $("n-detail").replaceChildren(); return; }
+        const delivered = n.deliveries.length
+            ? el("span", {}, ...n.deliveries.map(chan))
+            : el("span", { className: "muted", textContent: "not routed: matched no output" });
+        $("n-detail").replaceChildren(detailPanel(n.title, () => { state.selected.notifications = null; renderNotifications(true); },
+            dlOf([
+                ["Channels", delivered],
+                ["Message", n.message],
+                ["Severity", n.severity && sevSpan(n.severity)],
+                ["System", n.system],
+                ["Author", n.author],
+                ["Tags", n.tags],
+                ["Timestamp", n.timestamp],
+                ["First Seen", fmtTime(n.firstSeen)],
+                ["URL", n.url && /^https?:/i.test(n.url) ? el("a", { href: n.url, target: "_blank", rel: "noopener", textContent: n.url }) : n.url],
+            ])));
+    }
+
+    // --- MS Teams / Webhook tabs ----------------------------------------------
+    const P = { msteams: "t", webhook: "w" };
+
+    function renderPosts(kind, withDetail) {
+        const p = P[kind];
+        const all = state.posts.filter((x) => x.kind === kind);
+        fillSelect($(p + "channel"), uniq(all.map((x) => x.channel)));
+        const ch = $(p + "channel").value, q = $(p + "q").value.trim().toLowerCase();
+        const shown = all.filter((x) => (!ch || x.channel === ch) &&
+            (!q || [x.title, x.body, x.channel, x.fallbackText].join("\n").toLowerCase().includes(q)));
+        const rows = shown.map((x) => {
+            const tr = el("tr", { className: "clickable" + (state.selected[kind] === x.id ? " selected" : "") },
+                el("td", { textContent: fmtTime(x.receivedAt) }),
+                el("td", { textContent: x.title || "(no title)" }),
+                el("td", {}, sevSpan(x.severity)),
+                el("td", { textContent: x.channel }));
+            tr.onclick = () => { state.selected[kind] = state.selected[kind] === x.id ? null : x.id; renderPosts(kind, true); };
+            return tr;
+        });
+        if (!rows.length) rows.push(emptyRow(4, all.length ? "No posts match the current filters"
+            : "Nothing received yet. Point an " + (kind === "msteams" ? "msteams output at " + base + "/teams/<channel>" : "webhook output at " + base + "/webhook/<channel>") + "."));
+        $(p + "-rows").replaceChildren(...rows);
+        count(p + "-count", shown.length, all.length, "posts");
+        if (withDetail) renderPostDetail(kind);
+    }
+
+    function renderPostDetail(kind) {
+        const p = P[kind];
+        const x = state.posts.find((y) => y.id === state.selected[kind]);
+        if (!x) { $(p + "-detail").replaceChildren(); return; }
+        const n = state.notifications.find((y) => y.id === x.notificationId);
+        const toNotification = n && el("a", { href: "#notifications", textContent: "Show notification" });
+        if (toNotification) toNotification.onclick = (e) => { e.preventDefault(); state.selected.notifications = n.id; showTab("notifications"); };
+        const raw = JSON.stringify(x.raw, null, 2);
+        const right = kind === "msteams"
+            ? el("div", {}, teamsPreview(x.envelope, x.fallbackText, () => renderPostDetail(kind)),
+                el("details", {}, el("summary", { textContent: "Raw payload" }), el("pre", { className: "payload", textContent: raw })))
+            : el("div", {}, el("div", { className: "preview-head" }, el("span", { textContent: "Payload" })),
+                el("pre", { className: "payload", textContent: raw }));
+        $(p + "-detail").replaceChildren(detailPanel(x.title, () => { state.selected[kind] = null; renderPosts(kind, true); },
+            el("div", { className: "detail-grid" },
+                dlOf([
+                    ["Channel", x.channel],
+                    ["Received", fmtTime(x.receivedAt)],
+                    ["Severity", x.severity && sevSpan(x.severity)],
+                    ["System", x.system],
+                    ["Post ID", x.id],
+                    ["Notification", toNotification],
+                ]),
+                right)));
+    }
+
+    // --- render --------------------------------------------------------------
+    // withDetail rebuilds the open detail panel too; live updates skip it, so
+    // a new post does not collapse what the reader has open.
+    function renderAll(withDetail) {
+        $("n-notifications").textContent = state.notifications.length || "";
+        $("n-msteams").textContent = state.posts.filter((x) => x.kind === "msteams").length || "";
+        $("n-webhook").textContent = state.posts.filter((x) => x.kind === "webhook").length || "";
+        if (state.tab === "notifications") renderNotifications(withDetail);
+        if (state.tab === "msteams" || state.tab === "webhook") renderPosts(state.tab, withDetail);
+    }
+    ["nq", "nseverity", "nsystem", "nchannel"].forEach((id) => $(id).addEventListener("input", () => renderNotifications(false)));
+    ["t", "w"].forEach((p) => ["q", "channel"].forEach((f) => $(p + f).addEventListener("input", () => renderPosts(p === "t" ? "msteams" : "webhook", false))));
+
+    // --- data ----------------------------------------------------------------
+    const MAX_ITEMS = 5000;
+    function upsert(list, item) {
+        const i = list.findIndex((x) => x.id === item.id);
+        if (i >= 0) list[i] = item; else list.push(item);
+        list.sort((a, b) => b.seq - a.seq);
+        if (list.length > MAX_ITEMS) list.length = MAX_ITEMS;
+    }
+
+    async function load() {
+        const [nres, pres] = await Promise.all([fetch(url("/api/notifications")), fetch(url("/api/messages"))]);
+        if (!nres.ok || !pres.ok) throw new Error("load failed: " + nres.status + "/" + pres.status);
+        state.notifications = await nres.json();
+        state.posts = await pres.json();
+    }
+
+    function connect() {
+        const es = new EventSource(url("/api/events"));
+        es.onopen = () => { $("status").textContent = "live"; $("status").classList.add("on"); };
+        es.onerror = () => { $("status").textContent = "reconnecting…"; $("status").classList.remove("on"); };
+        es.addEventListener("message", (ev) => {
+            const e = JSON.parse(ev.data);
+            if (e.post) upsert(state.posts, e.post);
+            if (e.notification) upsert(state.notifications, e.notification);
+            renderAll(false);
+        });
+    }
+
+    showTab(location.hash.slice(1));
+    load().then(() => { renderAll(true); connect(); }).catch((e) => { $("status").textContent = String(e); });
+
+    // --- playground ----------------------------------------------------------
+    let lastEnvelope = null;
+    function renderPlayground() {
+        if (!lastEnvelope) return;
+        const fb = lastEnvelope.attachments[0] && lastEnvelope.attachments[0].content.fallbackText;
+        $("pg-out").replaceChildren(teamsPreview(lastEnvelope, fb, renderPlayground));
+    }
+    $("pg-render").onclick = async () => {
+        $("pg-error").textContent = "";
+        let message;
+        try { message = JSON.parse($("pg-message").value); } catch (e) { $("pg-error").textContent = "message: " + e.message; return; }
+        const res = await fetch(url("/api/render"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: message, card: $("pg-card").value })
+        });
+        if (!res.ok) { $("pg-error").textContent = await res.text(); return; }
+        lastEnvelope = await res.json();
+        renderPlayground();
+    };
+})();
+</script>
+</body>
+</html>

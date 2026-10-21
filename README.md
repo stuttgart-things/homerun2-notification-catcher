@@ -28,6 +28,7 @@ Alertmanager.
 | [Configuration](docs/configuration.md) | Env vars, YAML routing config, smoke + dry-run |
 | [Deployment](docs/deployment.md) | KCL manifests, Flux integration, two-layer secret pattern |
 | [Alertmanager integration](docs/alertmanager.md) | Wire kube-prometheus-stack alerts through omni-pitcher into the catcher |
+| [Notification sink](docs/sink.md) | Stand-in receiver for the outputs: every notification in one list, Teams cards rendered, test API, card playground |
 | [CI/CD](docs/cicd.md) | Workflows, image build, kustomize OCI release |
 | [Preview environments](docs/preview-environments.md) | Per-PR namespaces |
 

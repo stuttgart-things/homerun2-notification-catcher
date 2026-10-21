@@ -6,6 +6,7 @@ nav:
   - Configuration: configuration.md
   - Deployment: deployment.md
   - Alertmanager integration: alertmanager.md
+  - Notification sink: sink.md
   - Preview Environments: preview-environments.md
   - CI/CD: cicd.md
 
