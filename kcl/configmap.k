@@ -26,6 +26,10 @@ _envData = {
     REDIS_STREAM: config.redisStream
     CONSUMER_GROUP: config.consumerGroup
     CONFIG_PATH: "/etc/notification-catcher/config.yaml"
+    if config.httpEnabled:
+        HTTP_ADDR: ":{}".format(config.httpContainerPort)
+    if config.httpEnabled and config.httpBasePath:
+        BASE_PATH: config.httpBasePath
 }
 
 configMapEnv = {

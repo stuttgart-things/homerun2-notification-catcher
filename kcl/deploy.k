@@ -1,9 +1,11 @@
 """
 Deployments for homerun2-notification-catcher.
 
-The catcher is a pure consumer — no Service, no Ingress, no HTTPRoute. It
-runs one (or more) replicas that join a Redis consumer group and dispatch
-caught messages to the outputs declared in /etc/notification-catcher/config.yaml.
+The catcher is a consumer: it runs one (or more) replicas that join a Redis
+consumer group and dispatch caught messages to the outputs declared in
+/etc/notification-catcher/config.yaml. With config.httpEnabled (#22) it also
+listens on httpContainerPort for its read-only UI and /healthz, which then
+backs a readiness probe; service.k / httproute.k expose it. Off by default.
 
 The optional sink (<name>-sink, config.sinkEnabled) runs the same image with
 `args: [sink]` — a stand-in receiver the outputs can point at. It needs no
@@ -76,13 +78,34 @@ deployment = {
                                     name: "{}-env".format(config.name)
                                 }
                             }
-                            if config.outputSecrets:
+                            if config.outputSecrets or (config.httpEnabled and config.httpToken):
                                 {
                                     secretRef: {
                                         name: "{}-secrets".format(config.name)
                                     }
                                 }
                         ]
+                        if config.httpEnabled:
+                            ports: [
+                                {
+                                    name: "http"
+                                    containerPort: config.httpContainerPort
+                                    protocol: "TCP"
+                                }
+                            ]
+                            # /healthz pings Redis: not ready while Redis is
+                            # unreachable. No liveness probe -- the catcher
+                            # exits on its own when Redis stays away at
+                            # startup (REDIS_STARTUP_TIMEOUT).
+                            readinessProbe: {
+                                httpGet: {
+                                    path: "/healthz"
+                                    port: "http"
+                                }
+                                periodSeconds: 10
+                                timeoutSeconds: 3
+                                failureThreshold: 3
+                            }
                         resources: {
                             requests: {
                                 cpu: config.cpuRequest

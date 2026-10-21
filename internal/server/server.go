@@ -1,0 +1,329 @@
+// Package server is the catcher's optional, read-only HTTP surface (#22):
+// a health check for the readiness probe and a page (plus JSON) showing the
+// loaded routing config, with secrets redacted. Off unless HTTP_ADDR is set;
+// the catcher stays a pure consumer otherwise.
+package server
+
+import (
+	"bytes"
+	"context"
+	_ "embed"
+	"encoding/json"
+	"html/template"
+	"net/http"
+	"net/url"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/webui"
+)
+
+// pingTimeout bounds the Redis check per health request; the kubelet's
+// probe timeout is 1s by default.
+const pingTimeout = 800 * time.Millisecond
+
+// redacted replaces secret values (query values, header values).
+const redacted = "REDACTED"
+
+var (
+	//go:embed index.html
+	indexSrc  string
+	indexTmpl = template.Must(template.New("index").Funcs(template.FuncMap{
+		"join": strings.Join,
+	}).Parse(indexSrc))
+)
+
+// BuildInfo is shown in the page footer, as in the other homerun2 UIs.
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Date    string `json:"date"`
+}
+
+// Options configure a Server.
+type Options struct {
+	// Token, when set, is required on every route but the health checks and
+	// /static/, as "Authorization: Bearer <token>" or "?token=<token>".
+	Token string
+	// BasePath is the URL prefix behind a reverse proxy; see
+	// webui.ParseBasePath. Health stays at the root.
+	BasePath string
+	Build    BuildInfo
+
+	Config        *config.NotifyConfig
+	DryRun        bool
+	RedisAddr     string
+	Streams       []string
+	ConsumerGroup string
+}
+
+// Server serves the health check and the config view.
+type Server struct {
+	opts Options
+
+	mu   sync.RWMutex
+	ping func(context.Context) error
+}
+
+// New returns a Server. Until SetPing is called (the catcher is connected),
+// the health check reports Redis as connecting.
+func New(opts Options) *Server {
+	return &Server{opts: opts}
+}
+
+// SetPing sets the Redis check the health endpoint runs.
+func (s *Server) SetPing(ping func(context.Context) error) {
+	s.mu.Lock()
+	s.ping = ping
+	s.mu.Unlock()
+}
+
+// Handler returns the HTTP routes, mounted under Options.BasePath.
+func (s *Server) Handler() http.Handler {
+	app := http.NewServeMux()
+	app.HandleFunc("GET /api/config", webui.Auth(s.opts.Token, s.handleConfigJSON))
+	app.Handle("GET /static/", webui.Static())
+	app.HandleFunc("GET /{$}", webui.Auth(s.opts.Token, s.handleIndex))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /healthz", s.handleHealth)
+	base := s.opts.BasePath
+	if base == "" {
+		mux.Handle("/", app)
+		return mux
+	}
+	toUI := http.RedirectHandler(base+"/", http.StatusTemporaryRedirect)
+	mux.Handle(base+"/", http.StripPrefix(base, app))
+	mux.Handle(base, toUI)
+	mux.Handle("/{$}", toUI)
+	return mux
+}
+
+// Health is the /healthz answer: 200 when Redis answers, else 503.
+type Health struct {
+	Status           string `json:"status"` // ok | unavailable
+	Redis            string `json:"redis"`  // ok | connecting | error: …
+	DispatcherLoaded bool   `json:"dispatcher_loaded"`
+	DryRun           bool   `json:"dry_run"`
+	Outputs          int    `json:"outputs"`
+}
+
+func (s *Server) health(ctx context.Context) Health {
+	h := Health{
+		Status:           "ok",
+		Redis:            "ok",
+		DispatcherLoaded: s.opts.Config != nil,
+		DryRun:           s.opts.DryRun,
+	}
+	if s.opts.Config != nil {
+		h.Outputs = len(s.opts.Config.Outputs)
+	}
+	s.mu.RLock()
+	ping := s.ping
+	s.mu.RUnlock()
+	if ping == nil {
+		h.Redis = "connecting"
+	} else {
+		ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+		defer cancel()
+		if err := ping(ctx); err != nil {
+			h.Redis = "error: " + err.Error()
+		}
+	}
+	if h.Redis != "ok" {
+		h.Status = "unavailable"
+	}
+	return h
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	h := s.health(r.Context())
+	code := http.StatusOK
+	if h.Status != "ok" {
+		code = http.StatusServiceUnavailable
+	}
+	writeJSON(w, code, h)
+}
+
+// ConfigView is the loaded routing config as the UI shows it: secrets
+// redacted, everything else as loaded.
+type ConfigView struct {
+	Build         BuildInfo    `json:"build"`
+	DryRun        bool         `json:"dryRun"`
+	RedisAddr     string       `json:"redisAddr"`
+	Streams       []string     `json:"streams"`
+	ConsumerGroup string       `json:"consumerGroup"`
+	Outputs       []OutputView `json:"outputs"`
+}
+
+// OutputView is one output with its target redacted: URL query values and
+// userinfo, and every header value, are replaced -- a Teams Workflow URL
+// carries its signature in the query, a webhook its token in a header.
+type OutputView struct {
+	Name      string                  `json:"name"`
+	Type      string                  `json:"type"`
+	Target    string                  `json:"target"`
+	Method    string                  `json:"method,omitempty"`
+	Headers   []string                `json:"headers,omitempty"` // "Name: REDACTED"
+	Filters   FiltersView             `json:"filters"`
+	CardFacts []config.CardFactConfig `json:"cardFacts,omitempty"`
+}
+
+// FiltersView is config.OutputFilters with JSON names.
+type FiltersView struct {
+	SeverityMin     string            `json:"severityMin,omitempty"`
+	Match           map[string]string `json:"match,omitempty"`
+	TagsContain     []string          `json:"tagsContain,omitempty"`
+	TagsExclude     []string          `json:"tagsExclude,omitempty"`
+	MessageContains []string          `json:"messageContains,omitempty"`
+}
+
+// Empty reports whether no filter is set: the output takes every message.
+func (f FiltersView) Empty() bool {
+	return f.SeverityMin == "" && len(f.Match) == 0 && len(f.TagsContain) == 0 &&
+		len(f.TagsExclude) == 0 && len(f.MessageContains) == 0
+}
+
+// MatchPairs lists Match as "key=value", sorted, for the page.
+func (f FiltersView) MatchPairs() []string {
+	out := make([]string, 0, len(f.Match))
+	for k, v := range f.Match {
+		out = append(out, k+"="+v)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (s *Server) view() ConfigView {
+	v := ConfigView{
+		Build:         s.opts.Build,
+		DryRun:        s.opts.DryRun,
+		RedisAddr:     s.opts.RedisAddr,
+		Streams:       s.opts.Streams,
+		ConsumerGroup: s.opts.ConsumerGroup,
+		Outputs:       []OutputView{},
+	}
+	if s.opts.Config == nil {
+		return v
+	}
+	for _, o := range s.opts.Config.Outputs {
+		target := o.URL
+		if o.Type == config.OutputTypeTeams {
+			target = o.WebhookURL
+		}
+		ov := OutputView{
+			Name:   o.Name,
+			Type:   o.Type,
+			Target: RedactURL(target),
+			Method: o.Method,
+			Filters: FiltersView{
+				SeverityMin:     o.Filters.SeverityMin,
+				Match:           o.Filters.Match,
+				TagsContain:     o.Filters.TagsContain,
+				TagsExclude:     o.Filters.TagsExclude,
+				MessageContains: o.Filters.MessageContains,
+			},
+			CardFacts: o.Card.Facts,
+		}
+		for name := range o.Headers {
+			ov.Headers = append(ov.Headers, name+": "+redacted)
+		}
+		sort.Strings(ov.Headers)
+		v.Outputs = append(v.Outputs, ov)
+	}
+	return v
+}
+
+// RedactURL keeps scheme, host, path and the query keys of raw, and replaces
+// the query values, any userinfo, and path segments that look like a key
+// (16+ characters mixing letters and digits: the legacy Teams connector URL
+// carries its secret in the path; a workflow id goes too). An unparsable URL
+// is redacted whole.
+func RedactURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return redacted
+	}
+	if u.User != nil {
+		u.User = url.User(redacted)
+	}
+	if u.RawQuery != "" {
+		q := u.Query()
+		keys := make([]string, 0, len(q))
+		for k := range q {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, len(keys))
+		for i, k := range keys {
+			parts[i] = url.QueryEscape(k) + "=" + redacted
+		}
+		u.RawQuery = strings.Join(parts, "&")
+	}
+	if u.Path != "" {
+		segs := strings.Split(u.Path, "/")
+		for i, seg := range segs {
+			if looksLikeKey(seg) {
+				segs[i] = redacted
+			}
+		}
+		u.Path, u.RawPath = strings.Join(segs, "/"), ""
+	}
+	u.Fragment = ""
+	return u.String()
+}
+
+func looksLikeKey(seg string) bool {
+	if len(seg) < 16 {
+		return false
+	}
+	return strings.ContainsAny(seg, "0123456789") &&
+		strings.ContainsAny(strings.ToLower(seg), "abcdefghijklmnopqrstuvwxyz")
+}
+
+func (s *Server) handleConfigJSON(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.view())
+}
+
+type indexData struct {
+	BasePath string
+	// PortalTheme links homerun2-portal's design tokens: the request came
+	// through the portal's proxy.
+	PortalTheme bool
+	Commit      string
+	Health      Health
+	ConfigView
+}
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	commit := s.opts.Build.Commit
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+	var buf bytes.Buffer
+	if err := indexTmpl.Execute(&buf, indexData{
+		BasePath:    s.opts.BasePath,
+		PortalTheme: r.Header.Get("X-Forwarded-Prefix") != "",
+		Commit:      commit,
+		Health:      s.health(r.Context()),
+		ConfigView:  s.view(),
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}

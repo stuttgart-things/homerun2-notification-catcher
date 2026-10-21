@@ -475,20 +475,6 @@ func TestPortalTheme(t *testing.T) {
 	}
 }
 
-func TestParseBasePath(t *testing.T) {
-	for in, want := range map[string]string{"": "", "/": "", "notify": "/notify", "/a/b/": "/a/b"} {
-		got, err := ParseBasePath(in)
-		if err != nil || got != want {
-			t.Errorf("ParseBasePath(%q) = %q, %v; want %q", in, got, err, want)
-		}
-	}
-	for _, in := range []string{"/../x", "/a b", `/"x`} {
-		if _, err := ParseBasePath(in); err == nil {
-			t.Errorf("ParseBasePath(%q): want error", in)
-		}
-	}
-}
-
 func listNotifications(t *testing.T, url string) []Notification {
 	t.Helper()
 	resp, err := http.Get(url)

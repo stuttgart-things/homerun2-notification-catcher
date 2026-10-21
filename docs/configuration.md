@@ -19,6 +19,9 @@ Two layers:
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
 | `CONSUMER_START_ID` | `$` | Where a **newly created** consumer group starts: `$` (only new messages), `0` (whole stream), or a stream ID. An existing group keeps its position |
 | `REDIS_STARTUP_TIMEOUT` | `120s` | How long startup retries Redis before exiting (Go duration); SIGINT/SIGTERM ends the wait with exit 0 |
+| `HTTP_ADDR` | *(empty)* | Optional read-only UI + `/healthz` (e.g. `:8080`); see [HTTP UI](http-ui.md) |
+| `AUTH_TOKEN` | *(empty)* | Token for the UI page and `/api/config` |
+| `BASE_PATH` | *(empty)* | URL prefix of the UI behind a proxy |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs but Notifier.Send is skipped — matching outputs log "would send" at INFO instead. |

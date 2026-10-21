@@ -1,8 +1,9 @@
 # Vendored page assets
 
-Served by the sink under `<BASE_PATH>/static/vendor/` so the HTML view works
-in clusters without internet access. Update by replacing the file and the
-version in its name (and in `internal/sink/index.html`).
+Served under `<BASE_PATH>/static/vendor/` by the sink and the catcher's UI
+(#22), so the HTML views work in clusters without internet access. Update by
+replacing the file and the version in its name (and in
+`internal/sink/index.html`, `internal/server/index.html`).
 
 | File | Source | License |
 |---|---|---|

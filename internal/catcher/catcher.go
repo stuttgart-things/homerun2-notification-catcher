@@ -153,6 +153,11 @@ func (c *RedisCatcher) Shutdown() {
 	}
 }
 
+// Ping checks the Redis connection, for the HTTP health check (#22).
+func (c *RedisCatcher) Ping(ctx context.Context) error {
+	return c.redisClient.Ping(ctx).Err()
+}
+
 // Errors returns the consumer's error channel.
 func (c *RedisCatcher) Errors() <-chan error {
 	return c.consumer.Errors

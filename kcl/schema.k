@@ -56,6 +56,25 @@ schema NotificationCatcher:
     # (tests/kcl-sink-profile.yaml).
     catcherEnabled: bool = True
 
+    # Read-only HTTP surface of the catcher (#22): /healthz (Redis ping) as
+    # readiness probe, the loaded routing config at <httpBasePath>/ and
+    # /api/config, secrets redacted. Off by default: the catcher stays a
+    # pure consumer, with no port and no Service.
+    httpEnabled: bool = False
+    httpContainerPort: int = 8080
+    httpServicePort: int = 80
+    # BASE_PATH of the UI, and the HTTPRoute's PathPrefix. /healthz stays at
+    # the root.
+    httpBasePath: str = ""
+    # AUTH_TOKEN for the UI, added to <name>-secrets. Expected to be a Flux
+    # substitution token (${CATCHER_UI_TOKEN}). Empty leaves the UI open.
+    httpToken: str = ""
+    httpRouteEnabled: bool = False
+    httpRouteParentRefName: str = ""
+    httpRouteParentRefNamespace: str = ""
+    httpRouteHostname: str = ""
+    httpRouteAnnotations: {str:str} = {}
+
     # Notification sink (`notification-catcher sink`, #52) — a stand-in
     # receiver for the outputs, deployed next to the catcher from the same
     # image. Off by default so the published kustomize base is unchanged.
@@ -87,6 +106,12 @@ schema NotificationCatcher:
         replicas >= 0, "replicas must be >= 0"
         catcherEnabled or sinkEnabled, "catcherEnabled or sinkEnabled must be set"
         sinkCapacity >= 1, "sinkCapacity must be >= 1"
+        not httpEnabled or catcherEnabled, "httpEnabled requires catcherEnabled"
+        httpContainerPort >= 1 and httpContainerPort <= 65535, "httpContainerPort must be valid"
+        httpServicePort >= 1 and httpServicePort <= 65535, "httpServicePort must be valid"
+        not httpBasePath or (httpBasePath.startswith("/") and not httpBasePath.endswith("/")), "httpBasePath must start with / and not end with /"
+        not httpRouteEnabled or httpEnabled, "httpRouteEnabled requires httpEnabled"
+        not httpRouteEnabled or httpRouteParentRefName != "", "httpRouteParentRefName must be set when httpRouteEnabled"
         sinkServicePort >= 1 and sinkServicePort <= 65535, "sinkServicePort must be valid"
         sinkContainerPort >= 1 and sinkContainerPort <= 65535, "sinkContainerPort must be valid"
         not sinkBasePath or (sinkBasePath.startswith("/") and not sinkBasePath.endswith("/")), "sinkBasePath must start with / and not end with /"

@@ -168,7 +168,7 @@ URL when a token is set.
 The page needs no internet: Pico CSS, the Adaptive Cards renderer, the
 header font and the logo are embedded in the binary and served from
 `<BASE_PATH>/static/` (no token, cached for a day). Versions, sources and
-licenses: `internal/sink/static/vendor/README.md`.
+licenses: `internal/webui/static/vendor/README.md`.
 
 ## API
 
