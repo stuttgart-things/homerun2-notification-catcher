@@ -190,18 +190,58 @@ Each listed post carries `id`, `seq`, `kind`, `channel`, `receivedAt`, `raw`,
 
 ## Asserting a notification in a test
 
+`assert-card` (same binary/image) polls `GET /api/messages` until posts
+match, and fails at `--timeout` with the near misses: the posts that were
+selected and the expectation each one failed.
+
 ```bash
-# pitch, then poll until the card is there
-for i in $(seq 1 60); do
-  n=$(curl -s "http://notify-sink:8080/api/messages?kind=msteams&channel=platform&objectId=$OBJECT_ID" | jq length)
-  [ "$n" -gt 0 ] && break; sleep 1
-done
-curl -s "http://notify-sink:8080/api/messages?objectId=$OBJECT_ID&fact=System=homerun2-git-pitcher" | jq -e 'length == 1'
+notification-catcher assert-card \
+  --sink http://homerun2-notification-catcher-sink.homerun2.svc \
+  --channel cluster-build-watch --object-id "$OBJECT_ID" \
+  --expect-fact System=cluster-build-watch --expect-severity success --timeout 60s
+# OK post 7 msteams/cluster-build-watch "cluster built" [success]
 ```
 
-`objectId` matches anywhere in the posted body, so it finds a post once the
-payload carries the id (#49). Until then, match on facts or `q` with a
-unique title.
+On failure:
 
-`seq` grows with each post, so `after=<last seq seen>` is a cursor that
-does not depend on clocks.
+```
+assert-card: no matching post (channel=cluster-build-watch&kind=msteams)
+  post 7 msteams/cluster-build-watch "cluster built" [success]: fact System = "request-vm", want "cluster-build-watch"
+```
+
+| Flag | Default | |
+|---|---|---|
+| `--sink` / `SINK_URL` | *(required)* | Sink base URL, incl. `BASE_PATH` |
+| `--token` / `SINK_TOKEN` | *(empty)* | Sent as `Authorization: Bearer` |
+| `--kind` | `msteams` | `webhook`, or empty for both |
+| `--channel` | | Selects posts to that channel |
+| `--object-id`, `--contains` | | Selects posts whose body contains it (one of the two) |
+| `--since` | | Selects posts received after it: a duration ago (`10m`) or RFC3339 |
+| `--expect-fact Title=Value` | | Repeatable; title and value case-insensitive |
+| `--expect-title` | | Substring of the title |
+| `--expect-severity` | | Severity, case-insensitive |
+| `--count` | `1` | At least this many posts must match |
+| `--timeout`, `--interval` | `60s`, `1s` | |
+
+400, 401 and 404 from the sink fail at once; an unreachable sink and 5xx
+are retried until the timeout.
+
+From a pipeline, through Dagger (the image, or `--src .` for a branch):
+
+```bash
+dagger call -m github.com/stuttgart-things/homerun2-notification-catcher/dagger assert-card \
+  --sink-url https://notification-sink.<cluster-fqdn> --channel cluster-build-watch \
+  --object-id "$OBJECT_ID" --expect-fact System=cluster-build-watch --timeout 60s
+```
+
+A sink running as a Dagger service is passed with `--sink` (e.g.
+`tcp://localhost:8080` from the host) and reached as `--sink-url
+http://sink:8080`. `--token` takes a Dagger secret (`env://SINK_TOKEN`).
+
+`objectId` matches anywhere in the posted body, so it finds a post once the
+payload carries the id (#49). Until then, select by channel and `--since`,
+or `--contains` a unique title.
+
+Without the subcommand, `seq` grows with each post, so
+`GET /api/messages?after=<last seq seen>` is a cursor that does not depend
+on clocks.

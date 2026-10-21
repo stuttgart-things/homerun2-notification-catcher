@@ -9,6 +9,7 @@ import (
 	"context"
 	"dagger/dagger/internal/dagger"
 	"fmt"
+	"time"
 )
 
 type Dagger struct{}
@@ -443,4 +444,106 @@ fi
 	}
 
 	return result.File("/app/integration-test-report.txt"), nil
+}
+
+// AssertCard waits until the notification sink has a post that matches, and
+// fails with the near misses otherwise (#62). It runs `notification-catcher
+// assert-card` from the released image, or built from src.
+//
+//	dagger call assert-card --sink-url https://notification-sink.<fqdn> \
+//	  --channel cluster-build-watch --object-id "$OBJECT_ID" \
+//	  --expect-fact System=cluster-build-watch
+//
+// A sink that runs as a Dagger service is passed as sink (bound as host
+// "sink"), with sinkUrl e.g. http://sink:8080.
+func (m *Dagger) AssertCard(
+	ctx context.Context,
+	// Sink base URL, incl. its BASE_PATH
+	sinkUrl string,
+	// +optional
+	sink *dagger.Service,
+	// +optional
+	token *dagger.Secret,
+	// +optional
+	// +default="msteams"
+	kind string,
+	// +optional
+	channel string,
+	// +optional
+	objectId string,
+	// +optional
+	contains string,
+	// Duration ago (10m) or RFC3339
+	// +optional
+	since string,
+	// Title=Value, repeatable
+	// +optional
+	expectFact []string,
+	// +optional
+	expectTitle string,
+	// +optional
+	expectSeverity string,
+	// +optional
+	// +default=1
+	count int,
+	// +optional
+	// +default="60s"
+	timeout string,
+	// +optional
+	// +default="ghcr.io/stuttgart-things/homerun2-notification-catcher:latest"
+	image string,
+	// Build the binary from this source instead of using image
+	// +optional
+	src *dagger.Directory,
+	// +optional
+	// +default="1.26.9"
+	goVersion string,
+) (string, error) {
+	args := []string{"assert-card",
+		"--sink", sinkUrl,
+		"--kind", kind,
+		"--count", fmt.Sprint(count),
+		"--timeout", timeout,
+	}
+	for flag, value := range map[string]string{
+		"--channel":         channel,
+		"--object-id":       objectId,
+		"--contains":        contains,
+		"--since":           since,
+		"--expect-title":    expectTitle,
+		"--expect-severity": expectSeverity,
+	} {
+		if value != "" {
+			args = append(args, flag, value)
+		}
+	}
+	for _, f := range expectFact {
+		args = append(args, "--expect-fact", f)
+	}
+
+	var ctr *dagger.Container
+	if src != nil {
+		bin := dag.Go().BuildBinary(src, dagger.GoBuildBinaryOpts{
+			GoVersion:  goVersion,
+			BinName:    "notification-catcher",
+			GoMainFile: "main.go",
+		})
+		ctr = dag.Container().From("alpine:latest").
+			WithFile("/usr/local/bin/notification-catcher", bin.File("notification-catcher")).
+			WithEntrypoint([]string{"/usr/local/bin/notification-catcher"})
+	} else {
+		ctr = dag.Container().From(image)
+	}
+	if sink != nil {
+		ctr = ctr.WithServiceBinding("sink", sink)
+	}
+	if token != nil {
+		ctr = ctr.WithSecretVariable("SINK_TOKEN", token)
+	}
+
+	// The sink's state changes between runs: never answer from the cache.
+	return ctr.
+		WithEnvVariable("ASSERT_CARD_AT", time.Now().UTC().Format(time.RFC3339Nano)).
+		WithExec(args, dagger.ContainerWithExecOpts{UseEntrypoint: true}).
+		Stdout(ctx)
 }

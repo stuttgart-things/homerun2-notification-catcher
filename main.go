@@ -51,6 +51,14 @@ func main() {
 		return
 	}
 
+	if len(os.Args) > 1 && os.Args[1] == "assert-card" {
+		if err := runAssertCard(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "assert-card:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := runServer(); err != nil {
 		slog.Error("startup failed", "error", err)
 		os.Exit(1)
@@ -304,6 +312,77 @@ func runSink(args []string) error {
 	)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
+	}
+	return nil
+}
+
+// runAssertCard polls a notification sink until posts match, for e2e tests
+// (#62). Exit 0 prints the matching posts; exit 1 says what came closest.
+//
+//	notification-catcher assert-card \
+//	    --sink http://homerun2-notification-catcher-sink.homerun2.svc \
+//	    --channel platform --object-id "$OBJECT_ID" \
+//	    --expect-fact System=homerun2-git-pitcher --timeout 60s
+func runAssertCard(args []string) error {
+	fs := flag.NewFlagSet("assert-card", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var (
+		a     sink.Assertion
+		since string
+	)
+	sinkURL := fs.String("sink", os.Getenv("SINK_URL"), "sink base URL incl. BASE_PATH (env SINK_URL, required)")
+	token := fs.String("token", os.Getenv("SINK_TOKEN"), "sink token (env SINK_TOKEN)")
+	timeout := fs.Duration("timeout", 60*time.Second, "give up after this long")
+	interval := fs.Duration("interval", time.Second, "time between polls")
+	fs.StringVar(&a.Kind, "kind", sink.KindTeams, "post kind: msteams, webhook, or empty for both")
+	fs.StringVar(&a.Channel, "channel", "", "channel (last path segment of the output URL)")
+	fs.StringVar(&a.ObjectID, "object-id", "", "only posts whose body contains this objectId")
+	fs.StringVar(&a.Contains, "contains", "", "only posts whose body contains this text")
+	fs.StringVar(&since, "since", "", "only posts received after this: a duration ago (10m) or RFC3339")
+	fs.Func("expect-fact", "Title=Value the post must carry (repeatable)", func(v string) error {
+		title, value, ok := strings.Cut(v, "=")
+		if !ok || strings.TrimSpace(title) == "" {
+			return errors.New("want Title=Value")
+		}
+		if a.Facts == nil {
+			a.Facts = map[string]string{}
+		}
+		a.Facts[strings.TrimSpace(title)] = strings.TrimSpace(value)
+		return nil
+	})
+	fs.StringVar(&a.Title, "expect-title", "", "substring the title must contain")
+	fs.StringVar(&a.Severity, "expect-severity", "", "severity the post must have")
+	fs.IntVar(&a.Count, "count", 1, "at least this many posts must match")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *sinkURL == "" {
+		return errors.New("--sink (or SINK_URL) is required")
+	}
+	if since != "" {
+		if d, err := time.ParseDuration(since); err == nil {
+			a.Since = time.Now().Add(-d)
+		} else if t, err := time.Parse(time.RFC3339, since); err == nil {
+			a.Since = t
+		} else {
+			return fmt.Errorf("--since %q: want a duration or RFC3339 time", since)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	client := &sink.AssertClient{
+		BaseURL:  strings.TrimSuffix(*sinkURL, "/"),
+		Token:    *token,
+		Interval: *interval,
+	}
+	posts, err := client.AssertPosts(ctx, a)
+	if err != nil {
+		return err
+	}
+	for _, m := range posts {
+		fmt.Println("OK", sink.Describe(m))
 	}
 	return nil
 }

@@ -526,10 +526,6 @@ func summarizeCard(m *Message) {
 }
 
 func factValue(facts map[string]string, title string) string {
-	for t, v := range facts {
-		if strings.EqualFold(t, title) {
-			return v
-		}
-	}
-	return ""
+	v, _ := lookupFact(facts, title)
+	return v
 }
