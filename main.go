@@ -18,7 +18,9 @@ import (
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/server"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/sink"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/webui"
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 )
@@ -105,6 +107,39 @@ func runServer() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Optional read-only HTTP surface (#22): health for the readiness probe,
+	// the loaded config. Up before the Redis wait, so /healthz can say
+	// "connecting" instead of refusing the connection.
+	var ui *server.Server
+	if addr := os.Getenv("HTTP_ADDR"); addr != "" {
+		basePath, err := webui.ParseBasePath(os.Getenv("BASE_PATH"))
+		if err != nil {
+			return err
+		}
+		ui = server.New(server.Options{
+			Token:         os.Getenv("AUTH_TOKEN"),
+			BasePath:      basePath,
+			Build:         server.BuildInfo{Version: version, Commit: commit, Date: date},
+			Config:        notifyCfg,
+			DryRun:        dispatcher.DryRun,
+			RedisAddr:     fmt.Sprintf("%s:%s", redisConfig.Addr, redisConfig.Port),
+			Streams:       streams,
+			ConsumerGroup: consumerGroup,
+		})
+		srv := &http.Server{Addr: addr, Handler: ui.Handler(), ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("http server failed", "addr", addr, "error", err)
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(shutdownCtx)
+		}()
+		slog.Info("http listening", "addr", addr, "base_path", basePath, "auth", os.Getenv("AUTH_TOKEN") != "")
+	}
+
 	// The consumer's preflight dials Redis exactly once, so a Redis that is
 	// still starting used to end the process and crashloop the pod (#40).
 	// Wait for it with bounded backoff for REDIS_STARTUP_TIMEOUT (default 120s).
@@ -126,6 +161,10 @@ func runServer() error {
 	)
 	if err != nil {
 		return fmt.Errorf("create catcher: %w", err)
+	}
+
+	if ui != nil {
+		ui.SetPing(c.Ping)
 	}
 
 	slog.Info("catcher configured",
@@ -279,7 +318,7 @@ func runSink(args []string) error {
 	}
 
 	config.SetupLogging()
-	basePath, err := sink.ParseBasePath(os.Getenv("BASE_PATH"))
+	basePath, err := webui.ParseBasePath(os.Getenv("BASE_PATH"))
 	if err != nil {
 		return err
 	}

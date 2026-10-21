@@ -16,7 +16,9 @@ Secrets for homerun2-notification-catcher.
                     time from the cluster's homerun2-secrets Secret.
                     Substitution acts on the plaintext placeholder, so
                     stringData is the right field here. Skipped when
-                    config.outputSecrets is empty.
+                    config.outputSecrets is empty. With config.httpEnabled
+                    and config.httpToken it also carries AUTH_TOKEN for the
+                    catcher's UI (#22).
 
 * <name>-sink     — SINK_TOKEN for the optional sink (key: token), read
                     via secretKeyRef. Like <name>-secrets the value is a
@@ -43,6 +45,9 @@ secretRedis = {
     }
 } if config.catcherEnabled and config.redisPassword else None
 
+# Output secrets, plus the UI token when the HTTP surface has one.
+_outputSecretData = config.outputSecrets | ({AUTH_TOKEN: config.httpToken} if config.httpEnabled and config.httpToken else {})
+
 secretOutputs = {
     apiVersion: "v1"
     kind: "Secret"
@@ -52,8 +57,8 @@ secretOutputs = {
         labels: labels.commonLabels
     }
     type: "Opaque"
-    stringData: config.outputSecrets
-} if config.catcherEnabled and config.outputSecrets else None
+    stringData: _outputSecretData
+} if config.catcherEnabled and _outputSecretData else None
 
 secretSink = {
     apiVersion: "v1"

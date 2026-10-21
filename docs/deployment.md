@@ -10,14 +10,14 @@ Manifests are generated from KCL in `kcl/`. One file per Kubernetes resource:
 | `labels.k` | Schema materialisation (reads `option("config.*")`) + common labels |
 | `namespace.k` | Namespace |
 | `serviceaccount.k` | ServiceAccount; `<name>-sink` ServiceAccount when `config.sinkEnabled` |
-| `configmap.k` | `<name>-env` (envFrom'd). `<name>-notify` is caller-supplied. |
-| `secret.k` | `<name>-redis` (Redis password) + `<name>-secrets` (output webhook tokens) + `<name>-sink` (`SINK_TOKEN`, sink only) |
-| `deploy.k` | Deployment; `<name>-sink` Deployment when `config.sinkEnabled` |
-| `service.k` | `<name>-sink` Service (sink only) |
-| `httproute.k` | `<name>-sink` HTTPRoute (sink only, `config.sinkHttpRouteEnabled`) |
+| `configmap.k` | `<name>-env` (envFrom'd; `HTTP_ADDR`/`BASE_PATH` with `config.httpEnabled`). `<name>-notify` is caller-supplied. |
+| `secret.k` | `<name>-redis` (Redis password) + `<name>-secrets` (output webhook tokens, `AUTH_TOKEN` of the UI) + `<name>-sink` (`SINK_TOKEN`, sink only) |
+| `deploy.k` | Deployment (port + readiness probe with `config.httpEnabled`); `<name>-sink` Deployment when `config.sinkEnabled` |
+| `service.k` | `<name>` Service (`config.httpEnabled`), `<name>-sink` Service (sink only) |
+| `httproute.k` | `<name>` HTTPRoute (`config.httpRouteEnabled`), `<name>-sink` HTTPRoute (sink only, `config.sinkHttpRouteEnabled`) |
 | `main.k` | Entry point — exports `manifests` |
 
-The catcher is a pure consumer — **no Service, no Ingress, no HTTPRoute**. The optional notification sink (`config.sinkEnabled`, off by default) is the only HTTP workload the chart emits. Releases also publish it alone as `homerun2-notification-catcher-sink-kustomize` (`tests/kcl-sink-profile.yaml`); see [Notification sink → Deploy](sink.md#deploy).
+By default the catcher is a pure consumer — **no Service, no Ingress, no HTTPRoute**. `config.httpEnabled` adds its read-only UI and a `/healthz` readiness probe ([HTTP UI](http-ui.md)). The optional notification sink (`config.sinkEnabled`, off by default) is the only HTTP workload the chart emits. Releases also publish it alone as `homerun2-notification-catcher-sink-kustomize` (`tests/kcl-sink-profile.yaml`); see [Notification sink → Deploy](sink.md#deploy).
 
 ## Rendering
 

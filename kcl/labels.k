@@ -26,6 +26,17 @@ _notifyConfig = option("config.notifyConfig")
 _outputSecrets = option("config.outputSecrets") or {}
 _extraEnvVars = option("config.extraEnvVars") or {}
 
+_httpEnabled = option("config.httpEnabled")
+_httpContainerPort = option("config.httpContainerPort")
+_httpServicePort = option("config.httpServicePort")
+_httpBasePath = option("config.httpBasePath")
+_httpToken = option("config.httpToken")
+_httpRouteEnabled = option("config.httpRouteEnabled")
+_httpRouteParentRefName = option("config.httpRouteParentRefName")
+_httpRouteParentRefNamespace = option("config.httpRouteParentRefNamespace")
+_httpRouteHostname = option("config.httpRouteHostname")
+_httpRouteAnnotations = option("config.httpRouteAnnotations") or {}
+
 _catcherEnabled = option("config.catcherEnabled")
 _sinkEnabled = option("config.sinkEnabled")
 _sinkCapacity = option("config.sinkCapacity")
@@ -75,6 +86,26 @@ config: schema.NotificationCatcher = schema.NotificationCatcher {
         outputSecrets = _outputSecrets
     if _extraEnvVars:
         extraEnvVars = _extraEnvVars
+    if _httpEnabled:
+        httpEnabled = _httpEnabled in [True, "True", "true"]
+    if _httpContainerPort:
+        httpContainerPort = int(_httpContainerPort)
+    if _httpServicePort:
+        httpServicePort = int(_httpServicePort)
+    if _httpBasePath:
+        httpBasePath = _httpBasePath
+    if _httpToken:
+        httpToken = _httpToken
+    if _httpRouteEnabled:
+        httpRouteEnabled = _httpRouteEnabled in [True, "True", "true"]
+    if _httpRouteParentRefName:
+        httpRouteParentRefName = _httpRouteParentRefName
+    if _httpRouteParentRefNamespace:
+        httpRouteParentRefNamespace = _httpRouteParentRefNamespace
+    if _httpRouteHostname:
+        httpRouteHostname = _httpRouteHostname
+    if _httpRouteAnnotations:
+        httpRouteAnnotations = _httpRouteAnnotations
     if _catcherEnabled != None:
         catcherEnabled = _catcherEnabled in [True, "True", "true"]
     if _sinkEnabled:

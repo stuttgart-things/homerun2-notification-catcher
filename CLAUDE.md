@@ -11,7 +11,7 @@ homerun2-notification-catcher — Go consumer for the homerun2 pipeline. Reads `
 - **Library**: `homerun-library/v4` for shared types and helpers
 - **Build**: ko (`.ko.yaml`), no Dockerfile
 - **CI**: Dagger modules (`dagger/main.go`), Taskfile
-- **Deploy**: KCL manifests (`kcl/`), Kustomize, Kubernetes (added in #8); sink opt-in via `config.sinkEnabled` (#54)
+- **Deploy**: KCL manifests (`kcl/`), Kustomize, Kubernetes (added in #8); sink opt-in via `config.sinkEnabled` (#54); read-only UI opt-in via `config.httpEnabled` (#22)
 - **Infra**: GitHub Actions, semantic-release, renovate
 
 ## Architecture
@@ -114,8 +114,10 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
 - `internal/notify/dispatcher.go` — fan-out across configured outputs
-- `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/sink/static/vendor/`, no CDN; see `docs/sink.md`
+- `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/webui/static/vendor/`, no CDN; see `docs/sink.md`
 - `internal/sink/assert.go` — `AssertClient.AssertPosts`: the polling behind `assert-card` (selection on the sink's side, expectations checked locally to report near misses)
+- `internal/server/` — optional read-only HTTP surface (#22, `HTTP_ADDR`): `/healthz` (Redis ping, 503 while connecting/down), the loaded config at `<BASE_PATH>/` and `/api/config` with secrets redacted (`RedactURL`, header values); `AUTH_TOKEN`; see `docs/http-ui.md`
+- `internal/webui/` — shared by the sink and the UI: embedded page assets (`static/`, vendored, no CDN), `ParseBasePath`, token `Auth`
 - `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata); what `Dispatch` and every `Notifier.Send` take, so the `objectId` reaches the payloads (card footer, webhook `objectId` field, delivery log lines; #64)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
 - `dagger/main.go` — CI functions (Lint, Build, BuildImage, ScanImage, BuildAndTestBinary, IntegrationTest, AssertCard)
@@ -137,6 +139,9 @@ Branch-per-issue with PR and merge to main.
 | `CONSUMER_NAME` | hostname | Consumer name within the group |
 | `CONSUMER_START_ID` | `$` | Where a **newly created** consumer group starts: `$` (only new messages), `0` (whole stream), or a stream ID. An existing group keeps its position |
 | `REDIS_STARTUP_TIMEOUT` | `120s` | How long startup retries Redis before exiting (Go duration); SIGINT/SIGTERM ends the wait with exit 0 |
+| `HTTP_ADDR` | *(empty)* | Listen address of the optional read-only UI + `/healthz` (#22), e.g. `:8080`; empty: no listener |
+| `AUTH_TOKEN` | *(empty)* | Bearer / `?token=` for the UI page and `/api/config` (not `/healthz`) |
+| `BASE_PATH` | *(empty)* | URL prefix of the UI behind a proxy |
 | `LOG_FORMAT` | `json` | Log format: `json` or `text` |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs as usual but matching outputs log "would send" at INFO and skip the Notifier.Send call. Use on first reconciliation after a config change to verify routing without spamming Teams. |

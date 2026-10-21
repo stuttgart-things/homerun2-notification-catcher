@@ -1,8 +1,8 @@
 """
-Service for the homerun2-notification-catcher sink (<name>-sink).
+Services for homerun2-notification-catcher.
 
-Only emitted with config.sinkEnabled — the catcher itself is a pure
-consumer and has no Service. Outputs reach the sink in-cluster at
+<name>-sink only with config.sinkEnabled; <name> (the catcher's UI, #22)
+only with config.httpEnabled -- otherwise the catcher has no Service. Outputs reach the sink in-cluster at
 http://<name>-sink.<namespace>.svc[:sinkServicePort]<sinkBasePath>/teams/<channel>.
 """
 
@@ -31,3 +31,26 @@ sinkService = {
         selector: labels.sinkSelectorLabels
     }
 } if config.sinkEnabled else None
+
+# The catcher's own UI (#22), with config.httpEnabled.
+service = {
+    apiVersion: "v1"
+    kind: "Service"
+    metadata: {
+        name: config.name
+        namespace: config.namespace
+        labels: labels.commonLabels
+    }
+    spec: {
+        type: "ClusterIP"
+        ports: [
+            {
+                name: "http"
+                port: config.httpServicePort
+                targetPort: "http"
+                protocol: "TCP"
+            }
+        ]
+        selector: labels.selectorLabels
+    }
+} if config.catcherEnabled and config.httpEnabled else None

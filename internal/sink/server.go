@@ -2,16 +2,13 @@ package sink
 
 import (
 	"bytes"
-	"crypto/subtle"
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +20,7 @@ import (
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/webui"
 )
 
 const (
@@ -37,9 +35,6 @@ var (
 	//go:embed index.html
 	indexSrc  string
 	indexTmpl = template.Must(template.New("index").Parse(indexSrc))
-
-	//go:embed static
-	staticFS embed.FS
 )
 
 // Fault makes the webhook of one channel misbehave, to exercise the
@@ -70,7 +65,7 @@ type Options struct {
 	// "?token=<token>" on every route but the health checks and /static/.
 	Token string
 	// BasePath is the URL prefix behind a reverse proxy, e.g. "/notify"
-	// behind homerun2-portal; see ParseBasePath. Health stays at the root.
+	// behind homerun2-portal; see webui.ParseBasePath. Health stays at the root.
 	BasePath string
 	Build    BuildInfo
 }
@@ -109,15 +104,7 @@ func (s *Server) Handler() http.Handler {
 	app.HandleFunc("GET /api/faults", s.auth(s.handleListFaults))
 	app.HandleFunc("PUT /api/faults/{kind}/{channel}", s.auth(s.handleSetFault))
 	app.HandleFunc("DELETE /api/faults/{kind}/{channel}", s.auth(s.handleClearFault))
-	static, _ := fs.Sub(staticFS, "static")
-	// Open like /health: the page's <link>/<script> tags can't carry the
-	// token. Embedded files have no modtime, so without Cache-Control the
-	// browser would fetch the ~0.5 MB of vendor assets on every load.
-	staticFiles := http.StripPrefix("/static/", http.FileServer(http.FS(static)))
-	app.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-		staticFiles.ServeHTTP(w, r)
-	}))
+	app.Handle("GET /static/", webui.Static())
 	app.HandleFunc("GET /{$}", s.auth(s.handleIndex))
 
 	mux := http.NewServeMux()
@@ -133,24 +120,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(base, toUI)
 	mux.Handle("/{$}", toUI)
 	return mux
-}
-
-var basePathSegment = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
-
-// ParseBasePath normalises a BASE_PATH to "/a/b" form ("" and "/" become
-// ""), as homerun2-core-catcher does. Only plain path segments are accepted:
-// the value is written into the page's HTML.
-func ParseBasePath(s string) (string, error) {
-	trimmed := strings.Trim(strings.TrimSpace(s), "/")
-	if trimmed == "" {
-		return "", nil
-	}
-	for _, seg := range strings.Split(trimmed, "/") {
-		if !basePathSegment.MatchString(seg) || seg == "." || seg == ".." {
-			return "", fmt.Errorf("invalid BASE_PATH %q: segment %q", s, seg)
-		}
-	}
-	return "/" + trimmed, nil
 }
 
 type indexData struct {
@@ -184,21 +153,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
-	token := s.opts.Token
-	if token == "" {
-		return next
-	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		got := r.URL.Query().Get("token")
-		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			got = strings.TrimPrefix(h, "Bearer ")
-		}
-		if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
-	}
+	return webui.Auth(s.opts.Token, next)
 }
 
 // handleTeams accepts what a Teams Workflow webhook accepts and answers 202

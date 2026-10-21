@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOMERUN² · Notification catcher</title>
+    <script>
+        // Compact header inside homerun2-portal's iframe, as in the sink.
+        if (window.self !== window.top) document.documentElement.classList.add('hr-embedded');
+    </script>
+    <link rel="icon" type="image/png" href="{{.BasePath}}/static/favicon.png">
+    <link rel="stylesheet" href="{{.BasePath}}/static/vendor/pico-2.1.1.min.css">
+    <link rel="stylesheet" href="{{.BasePath}}/static/vendor/fonts.css">
+    <style>
+        /* homerun2 design tokens, as in the sink's page (internal/sink/index.html). */
+        :where(:root) {
+            --hr-bg: #0b1120;
+            --hr-surface: #111827;
+            --hr-card: #1e293b;
+            --hr-border: #334155;
+            --hr-text: #e2e8f0;
+            --hr-muted: #94a3b8;
+            --hr-accent: #6366f1;
+            --hr-accent-2: #a855f7;
+            --hr-accent-3: #f97316;
+            --hr-ok: #22c55e;
+            --hr-info: #38bdf8;
+            --hr-warning: #eab308;
+            --hr-error: #ef4444;
+        }
+        :root { --pico-font-size: 14px; }
+        body { background: var(--hr-bg); }
+        .header-bar { background: linear-gradient(135deg, var(--hr-accent) 0%, var(--hr-accent-2) 100%); color: #f8fafc; padding: 1.8rem 1.5rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid var(--hr-accent-3); }
+        .header-bar h1 { margin: 0; font-family: 'Press Start 2P', cursive; font-size: 2.2rem; color: #ffffff; letter-spacing: 0.08em; text-shadow: 3px 3px 0px rgba(0,0,0,0.3); }
+        .header-bar .subtitle { font-family: 'Press Start 2P', cursive; font-size: 0.7rem; color: #fbbf24; margin-top: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase; }
+        .header-bar .actions { display: flex; gap: 0.5rem; }
+        .header-bar a { color: #e2e8f0; font-size: 0.85rem; }
+        .hr-embedded .header-bar { font-family: var(--hr-font, system-ui, sans-serif); background: var(--hr-surface); border-bottom: 1px solid var(--hr-border); min-height: 44px; padding: 6px 16px; align-items: center; }
+        .hr-embedded .header-bar h1 { display: none; }
+        .hr-embedded .header-bar .subtitle { font-family: inherit; font-size: 13px; color: var(--hr-muted); margin: 0; letter-spacing: normal; text-transform: none; }
+        .hr-embedded .header-bar .actions a { font-size: 12px; color: var(--hr-accent); text-decoration: none; }
+        .status { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+        .status div { background: var(--hr-card); border: 1px solid var(--hr-border); border-radius: 0.5rem; padding: 0.75rem 1rem; }
+        .status dt { color: #818cf8; font-size: 0.75rem; text-transform: uppercase; font-weight: bold; }
+        .status dd { margin: 0.25rem 0 0; color: var(--hr-text); word-break: break-word; }
+        .ok { color: var(--hr-ok); font-weight: bold; }
+        .bad { color: var(--hr-error); font-weight: bold; }
+        .warn { color: var(--hr-warning); font-weight: bold; }
+        h2 { font-size: 1rem; color: #818cf8; margin: 0 0 0.5rem; }
+        table { font-size: 0.85rem; }
+        thead th { background: var(--hr-card); color: #818cf8; text-transform: uppercase; }
+        td { vertical-align: top; }
+        td code { font-size: 0.78rem; word-break: break-all; }
+        .kind { display: inline-block; font-size: 0.7rem; font-weight: bold; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.1rem 0.45rem; border-radius: 0.25rem; }
+        .kind-msteams { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+        .kind-webhook { background: rgba(249,115,22,0.18); color: #fdba74; }
+        .f { display: block; white-space: nowrap; }
+        .f b { color: var(--hr-muted); font-weight: normal; }
+        .muted { color: var(--hr-muted); font-style: italic; }
+        .hint { font-size: 0.8rem; color: var(--hr-muted); }
+        .build-footer { background: var(--hr-card); color: #475569; padding: 0.6rem 1.5rem; margin-top: 1rem; display: flex; gap: 1.5rem; font-size: 0.75rem; border-top: 1px solid var(--hr-border); }
+        .build-footer .label { color: #64748b; }
+        .build-footer .value { color: #818cf8; }
+    </style>
+    {{if .PortalTheme}}<link rel="stylesheet" href="/static/homerun2-tokens.css">{{end}}
+</head>
+<body>
+    <div class="header-bar">
+        <div>
+            <a href="{{.BasePath}}/" style="text-decoration:none;color:inherit">
+                <h1>HOMERUN²</h1>
+                <div class="subtitle">Notification catcher</div>
+            </a>
+        </div>
+        <div class="actions">
+            <a href="{{.BasePath}}/api/config" target="_blank">Config JSON</a>
+        </div>
+    </div>
+    <main class="container-fluid">
+        <dl class="status">
+            <div><dt>Redis</dt><dd>{{if eq .Health.Redis "ok"}}<span class="ok">ok</span>{{else if eq .Health.Redis "connecting"}}<span class="warn">connecting</span>{{else}}<span class="bad">{{.Health.Redis}}</span>{{end}} <span class="hint">{{.RedisAddr}}</span></dd></div>
+            <div><dt>Streams</dt><dd>{{join .Streams ", "}}</dd></div>
+            <div><dt>Consumer group</dt><dd>{{.ConsumerGroup}}</dd></div>
+            <div><dt>Dry run</dt><dd>{{if .DryRun}}<span class="warn">on</span> <span class="hint">matching outputs log, nothing is sent</span>{{else}}off{{end}}</dd></div>
+        </dl>
+
+        <h2>Outputs ({{len .Outputs}})</h2>
+        <p class="hint">Every caught message goes to each output whose filters all match. Secrets are redacted: URL query values and keys in the path, header values.</p>
+        <div class="overflow-auto">
+        <table>
+            <thead><tr><th>Name</th><th>Type</th><th>Target</th><th>Filters</th><th>Card facts</th></tr></thead>
+            <tbody>
+            {{range .Outputs}}
+                <tr>
+                    <td><strong>{{.Name}}</strong></td>
+                    <td><span class="kind kind-{{.Type}}">{{.Type}}</span></td>
+                    <td><code>{{if .Method}}{{.Method}} {{end}}{{.Target}}</code>{{range .Headers}}<span class="f hint">{{.}}</span>{{end}}</td>
+                    <td>
+                        {{if .Filters.Empty}}<span class="muted">none: every message</span>{{end}}
+                        {{with .Filters.SeverityMin}}<span class="f"><b>severity ≥</b> {{.}}</span>{{end}}
+                        {{range .Filters.MatchPairs}}<span class="f"><b>match</b> {{.}}</span>{{end}}
+                        {{with .Filters.TagsContain}}<span class="f"><b>tags contain</b> {{join . " | "}}</span>{{end}}
+                        {{with .Filters.TagsExclude}}<span class="f"><b>tags exclude</b> {{join . " | "}}</span>{{end}}
+                        {{with .Filters.MessageContains}}<span class="f"><b>message contains</b> {{join . " | "}}</span>{{end}}
+                    </td>
+                    <td>{{if .CardFacts}}{{range .CardFacts}}<span class="f">{{.Title}} <b>← {{if .Tag}}tag {{.Tag}}{{else}}{{.Field}}{{end}}</b></span>{{end}}{{else if eq .Type "msteams"}}<span class="muted">default</span>{{end}}</td>
+                </tr>
+            {{else}}
+                <tr><td colspan="5" class="muted">No outputs configured: messages are only logged.</td></tr>
+            {{end}}
+            </tbody>
+        </table>
+        </div>
+    </main>
+    <footer class="build-footer">
+        <span><span class="label">version</span> <span class="value">{{.Build.Version}}</span></span>
+        <span><span class="label">commit</span> <span class="value">{{.Commit}}</span></span>
+        <span><span class="label">built</span> <span class="value">{{.Build.Date}}</span></span>
+    </footer>
+</body>
+</html>
