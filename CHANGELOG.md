@@ -1,3 +1,10 @@
+# [3.6.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.5.0...v3.6.0) (2026-10-21)
+
+
+### Features
+
+* **sink:** assert-card — wait for a notification in the sink ([03f8991](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/03f8991d370d40ddc20faa6048ed1d50a83d0f52)), closes [#62](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/62) [#55](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/55)
+
 # [3.5.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.4.0...v3.5.0) (2026-10-21)
 
 
