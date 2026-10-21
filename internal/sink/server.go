@@ -67,7 +67,7 @@ type BuildInfo struct {
 // Options configure a Server.
 type Options struct {
 	// Token, when set, is required as "Authorization: Bearer <token>" or
-	// "?token=<token>" on every route but the health checks.
+	// "?token=<token>" on every route but the health checks and /static/.
 	Token string
 	// BasePath is the URL prefix behind a reverse proxy, e.g. "/notify"
 	// behind homerun2-portal; see ParseBasePath. Health stays at the root.
@@ -110,7 +110,14 @@ func (s *Server) Handler() http.Handler {
 	app.HandleFunc("PUT /api/faults/{kind}/{channel}", s.auth(s.handleSetFault))
 	app.HandleFunc("DELETE /api/faults/{kind}/{channel}", s.auth(s.handleClearFault))
 	static, _ := fs.Sub(staticFS, "static")
-	app.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
+	// Open like /health: the page's <link>/<script> tags can't carry the
+	// token. Embedded files have no modtime, so without Cache-Control the
+	// browser would fetch the ~0.5 MB of vendor assets on every load.
+	staticFiles := http.StripPrefix("/static/", http.FileServer(http.FS(static)))
+	app.Handle("GET /static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		staticFiles.ServeHTTP(w, r)
+	}))
 	app.HandleFunc("GET /{$}", s.auth(s.handleIndex))
 
 	mux := http.NewServeMux()

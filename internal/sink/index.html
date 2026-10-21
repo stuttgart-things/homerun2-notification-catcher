@@ -11,9 +11,10 @@
         if (window.self !== window.top) document.documentElement.classList.add('hr-embedded');
     </script>
     <link rel="icon" type="image/png" href="{{.BasePath}}/static/favicon.png">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/adaptivecards@3.0.4/dist/adaptivecards.min.js"></script>
+    <!-- Vendored (static/vendor/README.md): no CDN, works without internet. -->
+    <link rel="stylesheet" href="{{.BasePath}}/static/vendor/pico-2.1.1.min.css">
+    <link rel="stylesheet" href="{{.BasePath}}/static/vendor/fonts.css">
+    <script src="{{.BasePath}}/static/vendor/adaptivecards-3.0.4.min.js"></script>
     <style>
         /* The homerun2 design tokens: a copy of homerun2-portal's
            static/homerun2-tokens.css for running without the portal. Behind
@@ -211,7 +212,7 @@
             <div><span class="label">commit</span> <span class="value">{{.Commit}}</span></div>
             <div><span class="label">built</span> <span class="value">{{.Date}}</span></div>
         </div>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem"><span class="label">a</span> <a href="https://github.com/stuttgart-things" target="_blank" style="color:#818cf8;text-decoration:none">stuttgart-things</a> <span class="label">project</span> <img src="https://raw.githubusercontent.com/stuttgart-things/docs/main/hugo/sthings-logo.png" alt="sthings" style="height:24px;"></div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem"><span class="label">a</span> <a href="https://github.com/stuttgart-things" target="_blank" style="color:#818cf8;text-decoration:none">stuttgart-things</a> <span class="label">project</span> <img src="{{.BasePath}}/static/sthings-logo.png" alt="sthings" style="height:24px;"></div>
     </div>
 
 <script>
@@ -332,8 +333,8 @@
         return fallbackCard(content);
     }
 
-    // Minimal renderer for when the adaptivecards script cannot load
-    // (offline cluster): title, text blocks, facts, severity stripe, links.
+    // Minimal renderer for when the adaptivecards script is missing or
+    // throws: title, text blocks, facts, severity stripe, links.
     function fallbackCard(content) {
         const box = el("div", { className: "fallback-card" });
         let first = true;
