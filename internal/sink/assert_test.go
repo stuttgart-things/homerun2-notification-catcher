@@ -11,12 +11,19 @@ import (
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
 )
 
+// caught wraps msg as the catcher hands it to the notifiers, without an
+// objectId.
+func caught(msg homerun.Message) models.CaughtMessage {
+	return models.CaughtMessage{Message: msg}
+}
+
 func sendCard(t *testing.T, url string, msg homerun.Message) {
 	t.Helper()
-	if err := notify.NewTeamsNotifier(url, nil).Send(context.Background(), msg); err != nil {
+	if err := notify.NewTeamsNotifier(url, nil).Send(context.Background(), caught(msg)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -92,7 +99,7 @@ func TestAssertPostsWaits(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		// not sendCard: t.Fatal must not run outside the test goroutine
 		if err := notify.NewTeamsNotifier(ts.URL+"/teams/late", nil).Send(context.Background(),
-			homerun.Message{Title: "late", Severity: "info"}); err != nil {
+			caught(homerun.Message{Title: "late", Severity: "info"})); err != nil {
 			t.Error(err)
 		}
 	}()

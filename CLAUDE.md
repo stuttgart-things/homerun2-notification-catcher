@@ -116,7 +116,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/dispatcher.go` — fan-out across configured outputs
 - `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/sink/static/vendor/`, no CDN; see `docs/sink.md`
 - `internal/sink/assert.go` — `AssertClient.AssertPosts`: the polling behind `assert-card` (selection on the sink's side, expectations checked locally to report near misses)
-- `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata)
+- `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata); what `Dispatch` and every `Notifier.Send` take, so the `objectId` reaches the payloads (card footer, webhook `objectId` field, delivery log lines; #64)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
 - `dagger/main.go` — CI functions (Lint, Build, BuildImage, ScanImage, BuildAndTestBinary, IntegrationTest, AssertCard)
 - `kcl/` — *(added in #8)* KCL deployment manifests; `config.sinkEnabled` adds the sink (`<name>-sink` ServiceAccount, Deployment, Service, optional HTTPRoute + token Secret, #54); `config.catcherEnabled: false` renders it alone

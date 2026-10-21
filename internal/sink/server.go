@@ -337,20 +337,15 @@ func (s *Server) handleChannels(w http.ResponseWriter, _ *http.Request) {
 //	channel   only this channel
 //	since     RFC3339 time; only posts received after it
 //	after     sequence number; only posts with a higher seq (poll cursor)
-//	objectId  only posts whose body contains this id
+//	objectId  only posts of this message (its objectId; for posts without
+//	          one, the id anywhere in the body)
 //	q         only posts whose body contains this text
 //	fact      Title=Value; only cards with that fact (repeatable)
 //	limit     at most this many, newest first
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
 	q := Query{Kind: v.Get("kind"), Channel: v.Get("channel"), Contains: v.Get("q")}
-	if id := v.Get("objectId"); id != "" {
-		if q.Contains != "" {
-			http.Error(w, "use either objectId or q", http.StatusBadRequest)
-			return
-		}
-		q.Contains = id
-	}
+	q.ObjectID = strings.TrimSpace(v.Get("objectId"))
 	if since := v.Get("since"); since != "" {
 		t, err := time.Parse(time.RFC3339, since)
 		if err != nil {
@@ -443,11 +438,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// RenderRequest is the card playground input: a homerun.Message and an
-// output's `card:` block as YAML (empty for the default card).
+// RenderRequest is the card playground input: a homerun.Message, its
+// objectId (the card's footer; optional) and an output's `card:` block as
+// YAML (empty for the default card).
 type RenderRequest struct {
-	Message homerun.Message `json:"message"`
-	Card    string          `json:"card,omitempty"`
+	Message  homerun.Message `json:"message"`
+	ObjectID string          `json:"objectId,omitempty"`
+	Card     string          `json:"card,omitempty"`
 }
 
 // handleRender builds the envelope the catcher would send for the request,
@@ -463,7 +460,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, http.StatusOK, notify.BuildEnvelopeWithCard(req.Message, card))
+	writeJSON(w, http.StatusOK, notify.BuildEnvelopeWithCard(models.CaughtMessage{Message: req.Message, ObjectID: req.ObjectID}, card))
 }
 
 // ParseCardConfig decodes a `card:` block (the YAML under an output's card

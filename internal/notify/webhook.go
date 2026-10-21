@@ -11,9 +11,19 @@ import (
 	"time"
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
+
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
-// WebhookNotifier POSTs the raw homerun.Message JSON to an arbitrary HTTP
+// WebhookPayload is the JSON a webhook output sends: the homerun.Message's
+// fields plus its objectId (#64). Additive, so a receiver that decodes a
+// plain homerun.Message keeps working.
+type WebhookPayload struct {
+	homerun.Message
+	ObjectID string `json:"objectId,omitempty"`
+}
+
+// WebhookNotifier POSTs the homerun.Message JSON (WebhookPayload) to an arbitrary HTTP
 // endpoint. Use it for PagerDuty/Opsgenie-style ingest URLs, custom internal
 // services, or anywhere the receiver wants the Message struct directly rather
 // than a vendor-specific payload.
@@ -44,12 +54,12 @@ func NewWebhookNotifier(url, method string, headers map[string]string, client *h
 
 // Send marshals msg to JSON and dispatches it. Non-2xx responses are surfaced
 // with status code and (truncated) body so the operator can diagnose.
-func (n *WebhookNotifier) Send(ctx context.Context, msg homerun.Message) error {
+func (n *WebhookNotifier) Send(ctx context.Context, msg models.CaughtMessage) error {
 	if strings.TrimSpace(n.url) == "" {
 		return fmt.Errorf("webhook: URL is empty")
 	}
 
-	body, err := json.Marshal(msg)
+	body, err := json.Marshal(WebhookPayload{Message: msg.Message, ObjectID: msg.ObjectID})
 	if err != nil {
 		return fmt.Errorf("webhook: marshal message: %w", err)
 	}

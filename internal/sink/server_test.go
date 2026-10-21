@@ -57,7 +57,7 @@ func TestTeamsNotifierRoundTrip(t *testing.T) {
 		System:   "kubernetes",
 		Tags:     "infra,storage",
 	}
-	if err := n.Send(context.Background(), msg); err != nil {
+	if err := n.Send(context.Background(), caught(msg)); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 
@@ -105,7 +105,7 @@ func TestTeamsNotifierRoundTrip(t *testing.T) {
 
 func TestTeamsAnswers202(t *testing.T) {
 	ts, _ := newTestServer(t, "")
-	body, _ := json.Marshal(notify.BuildEnvelope(homerun.Message{Title: "x"}))
+	body, _ := json.Marshal(notify.BuildEnvelope(caught(homerun.Message{Title: "x"})))
 	resp, err := http.Post(ts.URL+"/teams/c", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)
@@ -159,11 +159,11 @@ func TestFaultInjection(t *testing.T) {
 	n := notify.NewTeamsNotifier(ts.URL+"/teams/flaky", nil)
 	msg := homerun.Message{Title: "retry me"}
 	for i := 0; i < 2; i++ {
-		if err := n.Send(context.Background(), msg); err == nil || !strings.Contains(err.Error(), "500") {
+		if err := n.Send(context.Background(), caught(msg)); err == nil || !strings.Contains(err.Error(), "500") {
 			t.Fatalf("send %d: want 500 error, got %v", i, err)
 		}
 	}
-	if err := n.Send(context.Background(), msg); err != nil {
+	if err := n.Send(context.Background(), caught(msg)); err != nil {
 		t.Fatalf("fault should be used up: %v", err)
 	}
 	if got := len(store.List(Query{Channel: "flaky"})); got != 1 {
@@ -182,7 +182,7 @@ func TestFaultDelay(t *testing.T) {
 
 	client := &http.Client{Timeout: 50 * time.Millisecond}
 	n := notify.NewTeamsNotifier(ts.URL+"/teams/slow", client)
-	if err := n.Send(context.Background(), homerun.Message{Title: "x"}); err == nil {
+	if err := n.Send(context.Background(), caught(homerun.Message{Title: "x"})); err == nil {
 		t.Fatal("want timeout error")
 	}
 }
@@ -206,7 +206,7 @@ func TestRenderUsesCatcherBuilder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := notify.BuildEnvelopeWithCard(msg, config.CardConfig{Facts: []config.CardFactConfig{
+	want := notify.BuildEnvelopeWithCard(caught(msg), config.CardConfig{Facts: []config.CardFactConfig{
 		{Title: "Player A", Tag: "player_a"},
 		{Title: "Sets", Tag: "sets"},
 	}})
@@ -261,7 +261,7 @@ func TestToken(t *testing.T) {
 	}
 
 	n := notify.NewTeamsNotifier(ts.URL+"/teams/c?token=s3cret", nil)
-	if err := n.Send(context.Background(), homerun.Message{Title: "x"}); err != nil {
+	if err := n.Send(context.Background(), caught(homerun.Message{Title: "x"})); err != nil {
 		t.Errorf("webhook with ?token: %v", err)
 	}
 }
@@ -282,7 +282,7 @@ func TestEventsStream(t *testing.T) {
 		t.Fatalf("first line %q", line)
 	}
 
-	if err := notify.NewTeamsNotifier(ts.URL+"/teams/live", nil).Send(ctx, homerun.Message{Title: "streamed"}); err != nil {
+	if err := notify.NewTeamsNotifier(ts.URL+"/teams/live", nil).Send(ctx, caught(homerun.Message{Title: "streamed"})); err != nil {
 		t.Fatal(err)
 	}
 	for {
@@ -322,12 +322,12 @@ func TestWebhookNotifierRoundTrip(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 
 	n := notify.NewWebhookNotifier(ts.URL+"/webhook/slack-standin", "", nil, nil)
-	if err := n.Send(context.Background(), homerun.Message{
+	if err := n.Send(context.Background(), caught(homerun.Message{
 		Title: "vm ready", Severity: "success", System: "request-vm", Author: "crossplane",
-	}); err != nil {
+	})); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	if err := notify.NewTeamsNotifier(ts.URL+"/teams/slack-standin", nil).Send(context.Background(), homerun.Message{Title: "same name"}); err != nil {
+	if err := notify.NewTeamsNotifier(ts.URL+"/teams/slack-standin", nil).Send(context.Background(), caught(homerun.Message{Title: "same name"})); err != nil {
 		t.Fatal(err)
 	}
 
@@ -378,10 +378,10 @@ func TestFaultIsPerKind(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	if err := notify.NewWebhookNotifier(ts.URL+"/webhook/c", "", nil, nil).Send(context.Background(), homerun.Message{}); err == nil {
+	if err := notify.NewWebhookNotifier(ts.URL+"/webhook/c", "", nil, nil).Send(context.Background(), caught(homerun.Message{})); err == nil {
 		t.Error("webhook/c: want 503")
 	}
-	if err := notify.NewTeamsNotifier(ts.URL+"/teams/c", nil).Send(context.Background(), homerun.Message{}); err != nil {
+	if err := notify.NewTeamsNotifier(ts.URL+"/teams/c", nil).Send(context.Background(), caught(homerun.Message{})); err != nil {
 		t.Errorf("teams/c: %v", err)
 	}
 
@@ -403,7 +403,7 @@ func TestBasePath(t *testing.T) {
 	}).Handler())
 	defer ts.Close()
 
-	if err := notify.NewTeamsNotifier(ts.URL+"/notify/teams/c", nil).Send(context.Background(), homerun.Message{Title: "x"}); err != nil {
+	if err := notify.NewTeamsNotifier(ts.URL+"/notify/teams/c", nil).Send(context.Background(), caught(homerun.Message{Title: "x"})); err != nil {
 		t.Fatalf("sink under base path: %v", err)
 	}
 	if got := listMessages(t, ts.URL+"/notify/api/messages"); len(got) != 1 {
@@ -527,7 +527,7 @@ func TestNotificationsGroupDispatch(t *testing.T) {
 	warn := homerun.Message{Title: "disk", Severity: "warning", System: "kubernetes"}
 	info := homerun.Message{Title: "cluster built", Severity: "info", System: "git-pitcher"}
 	for _, m := range []homerun.Message{crit, warn, info, crit} {
-		for _, r := range d.Dispatch(ctx, m) {
+		for _, r := range d.Dispatch(ctx, caught(m)) {
 			if r.Err != nil {
 				t.Fatalf("%s: %v", r.Output, r.Err)
 			}
@@ -575,7 +575,7 @@ func TestNotificationsGroupDispatch(t *testing.T) {
 func TestNotificationFromCardOnly(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 	msg := homerun.Message{Title: "t", Message: "b", Severity: "error", System: "s", Author: "a", URL: "https://x.example"}
-	if err := notify.NewTeamsNotifier(ts.URL+"/teams/c", nil).Send(context.Background(), msg); err != nil {
+	if err := notify.NewTeamsNotifier(ts.URL+"/teams/c", nil).Send(context.Background(), caught(msg)); err != nil {
 		t.Fatal(err)
 	}
 	got := listNotifications(t, ts.URL+"/api/notifications")
@@ -653,5 +653,84 @@ func TestIndexAssetsAreLocal(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("font referenced by fonts.css: %d", resp.StatusCode)
+	}
+}
+
+// With objectIds (#64) posts group by id, not content: the same text
+// dispatched twice for two messages is two notifications, and ?objectId=
+// matches the id exactly (abc-1 is not abc-10).
+func TestNotificationsGroupByObjectID(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	cfg := &config.NotifyConfig{Outputs: []config.OutputConfig{
+		{Name: "all", Type: "webhook", URL: ts.URL + "/inbox"},
+		{Name: "teams", Type: "msteams", WebhookURL: ts.URL + "/teams/platform"},
+		{Name: "slack", Type: "webhook", URL: ts.URL + "/webhook/slack"},
+	}}
+	d, err := notify.NewDispatcher(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := homerun.Message{Title: "cluster built", Severity: "success", System: "cluster-build-watch"}
+	for _, id := range []string{"abc-1", "abc-10"} {
+		for _, r := range d.Dispatch(context.Background(), models.CaughtMessage{Message: msg, ObjectID: id}) {
+			if r.Err != nil {
+				t.Fatalf("%s: %v", r.Output, r.Err)
+			}
+		}
+	}
+
+	got := listNotifications(t, ts.URL+"/api/notifications")
+	if len(got) != 2 {
+		t.Fatalf("want one notification per objectId, got %d: %+v", len(got), got)
+	}
+	for i, id := range []string{"abc-10", "abc-1"} {
+		if n := got[i]; n.ObjectID != id || len(n.Deliveries) != 2 || !n.Inbox {
+			t.Errorf("notification %d: objectId %q, %d deliveries, inbox %v; want %q, 2, true", i, n.ObjectID, len(n.Deliveries), n.Inbox, id)
+		}
+	}
+
+	posts := listMessages(t, ts.URL+"/api/messages?objectId=abc-1")
+	if len(posts) != 2 {
+		t.Fatalf("?objectId=abc-1: %d posts, want the card and the webhook post of abc-1", len(posts))
+	}
+	for _, p := range posts {
+		if p.ObjectID != "abc-1" {
+			t.Errorf("post %s: objectId %q", p.ID, p.ObjectID)
+		}
+		if p.Kind == KindTeams && (p.Title != "cluster built" || p.Body != "cluster built") {
+			t.Errorf("the footer is not the title or body: %q / %q", p.Title, p.Body)
+		}
+	}
+}
+
+// A post from a catcher that sends no objectId is still found by the id in
+// its body.
+func TestObjectIDFallsBackToBody(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	msg := homerun.Message{Title: "old catcher", Message: "pitched as 1761-0", Severity: "info"}
+	if err := notify.NewTeamsNotifier(ts.URL+"/teams/c", nil).Send(context.Background(), caught(msg)); err != nil {
+		t.Fatal(err)
+	}
+	if posts := listMessages(t, ts.URL+"/api/messages?objectId=1761-0"); len(posts) != 1 || posts[0].ObjectID != "" {
+		t.Fatalf("posts = %+v", posts)
+	}
+}
+
+// The playground renders the footer when the request carries an objectId.
+func TestRenderObjectID(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	resp, err := http.Post(ts.URL+"/api/render", "application/json",
+		strings.NewReader(`{"message":{"title":"t"},"objectId":"1761-0"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var env models.TeamsEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatal(err)
+	}
+	body := env.Attachments[0].Content.Body
+	if last := body[len(body)-1]; last.Text != "objectId 1761-0" || !last.IsSubtle {
+		t.Errorf("last element = %+v", last)
 	}
 }

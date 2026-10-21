@@ -43,7 +43,9 @@ type CardElement struct {
 	Weight string        `json:"weight,omitempty"`
 	Wrap   bool          `json:"wrap,omitempty"`
 	Color  string        `json:"color,omitempty"`
-	Facts  []CardFact    `json:"facts,omitempty"`
+	// IsSubtle dims a TextBlock (the objectId footer).
+	IsSubtle bool       `json:"isSubtle,omitempty"`
+	Facts    []CardFact `json:"facts,omitempty"`
 }
 
 // CardFact is one row in a FactSet.

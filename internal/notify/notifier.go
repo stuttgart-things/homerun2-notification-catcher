@@ -7,14 +7,16 @@ package notify
 import (
 	"context"
 
-	homerun "github.com/stuttgart-things/homerun-library/v4"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
 
-// Notifier dispatches a single homerun.Message to one external channel.
+// Notifier dispatches a single caught message to one external channel. The
+// message's ObjectID travels with it into the payload (#64), so a receiver
+// (the sink, a log query) can find the post of one pitched message.
 //
 // Send must be safe for concurrent use. Implementations should treat ctx
 // cancellation as a hard deadline (return as soon as the in-flight request
 // finishes or is aborted).
 type Notifier interface {
-	Send(ctx context.Context, msg homerun.Message) error
+	Send(ctx context.Context, msg models.CaughtMessage) error
 }
