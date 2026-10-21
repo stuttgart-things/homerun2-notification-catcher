@@ -1,3 +1,11 @@
+# [3.4.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.3.1...v3.4.0) (2026-10-21)
+
+
+### Features
+
+* **notify:** log each delivery at INFO ([#60](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/60)) ([6d597d0](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/6d597d0fd207b0ee881a1c4c85d3e3c49870bbe3))
+* **sink:** serve the page's assets from the binary, no CDN ([007913b](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/007913ba8cc358ed33bccaf0ad8b2285cce5a98d)), closes [#55](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/55)
+
 ## [3.3.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.3.0...v3.3.1) (2026-10-21)
 
 
