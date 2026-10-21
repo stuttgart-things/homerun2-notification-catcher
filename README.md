@@ -99,8 +99,19 @@ kubectl -n homerun2 logs deploy/homerun2-notification-catcher --tail=50 | grep -
 ```
 
 ```
-INFO notifier sent  output=teams-homerun2-dev  title="Test-Warning Matrix"  severity=warning  system=portal-test
+INFO notifier sent  output=teams-homerun2-dev  objectId=1761000000001-0  title="Test-Warning Matrix"  severity=warning  system=portal-test
 ```
+
+After the fan-out one line per message sums it up: `dispatched` with each
+output's result (`sent`, `failed`, `filtered`, `dry-run`), or `no output
+matched`. Query by `objectId` to follow one message:
+
+```bash
+kubectl -n homerun2 logs deploy/homerun2-notification-catcher | grep 1761000000001-0
+```
+
+With the [HTTP UI](docs/http-ui.md) on, the same results are on its Events
+page and in `notification_catcher_dispatch_total{output,result}`.
 
 ### 3. Trip a real Prometheus alert
 

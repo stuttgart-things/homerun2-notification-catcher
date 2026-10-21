@@ -69,6 +69,9 @@ schema NotificationCatcher:
     # AUTH_TOKEN for the UI, added to <name>-secrets. Expected to be a Flux
     # substitution token (${CATCHER_UI_TOKEN}). Empty leaves the UI open.
     httpToken: str = ""
+    # SINK_URL: the notification sink's UI (incl. its base path), when the
+    # cluster runs one. The event log links each message there.
+    httpSinkUrl: str = ""
     httpRouteEnabled: bool = False
     httpRouteParentRefName: str = ""
     httpRouteParentRefNamespace: str = ""

@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
@@ -198,5 +199,35 @@ func TestDispatcher_DryRun_DefaultIsFalse(t *testing.T) {
 	)
 	if d.DryRun {
 		t.Error("Dispatcher.DryRun should default to false")
+	}
+}
+
+// OnDispatch gets every message with each output's result (#22, #49).
+func TestDispatcher_OnDispatch(t *testing.T) {
+	failing := &stubNotifier{err: errors.New("boom")}
+	d := NewDispatcherWithNotifiers(
+		DispatcherEntry{Name: "sent", Notifier: &stubNotifier{}},
+		DispatcherEntry{Name: "failed", Notifier: failing},
+		DispatcherEntry{Name: "filtered", Filters: config.OutputFilters{SeverityMin: "critical"}, Notifier: &stubNotifier{}},
+	)
+	var got []Record
+	d.OnDispatch = func(r Record) { got = append(got, r) }
+	d.Dispatch(context.Background(), models.CaughtMessage{Message: homerun.Message{Title: "x", Severity: "info"}, ObjectID: "1-0"})
+
+	if len(got) != 1 || got[0].Message.ObjectID != "1-0" || got[0].At.IsZero() {
+		t.Fatalf("records: %+v", got)
+	}
+	var results []string
+	for _, r := range got[0].Results {
+		results = append(results, r.Output+"="+r.Result())
+	}
+	if strings.Join(results, ",") != "sent=sent,failed=failed,filtered=filtered" {
+		t.Errorf("results: %v", results)
+	}
+
+	d.DryRun = true
+	d.Dispatch(context.Background(), caught(homerun.Message{Title: "y", Severity: "info"}))
+	if r := got[1].Results[0].Result(); r != ResultDryRun {
+		t.Errorf("dry run: %s", r)
 	}
 }

@@ -35,6 +35,13 @@ func newTestServer(t *testing.T, opts Options) *httptest.Server {
 	return ts
 }
 
+func newHandlerServer(t *testing.T, s *Server) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(ts.Close)
+	return ts
+}
+
 func get(t *testing.T, url string) (int, string) {
 	t.Helper()
 	resp, err := http.Get(url)

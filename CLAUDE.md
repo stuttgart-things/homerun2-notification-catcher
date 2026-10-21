@@ -113,10 +113,10 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/teams.go` — MS Teams Adaptive-Card notifier
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
-- `internal/notify/dispatcher.go` — fan-out across configured outputs
+- `internal/notify/dispatcher.go` — fan-out across configured outputs; one summary log line per message (`dispatched` with each output's result, or `no output matched`, #49) and the `OnDispatch` hook
 - `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/webui/static/vendor/`, no CDN; see `docs/sink.md`
 - `internal/sink/assert.go` — `AssertClient.AssertPosts`: the polling behind `assert-card` (selection on the sink's side, expectations checked locally to report near misses)
-- `internal/server/` — optional read-only HTTP surface (#22, `HTTP_ADDR`): `/healthz` (Redis ping, 503 while connecting/down), the loaded config at `<BASE_PATH>/` and `/api/config` with secrets redacted (`RedactURL`, header values); `AUTH_TOKEN`; see `docs/http-ui.md`
+- `internal/server/` — optional read-only HTTP surface (#22, `HTTP_ADDR`): `/healthz` (Redis ping, 503 while connecting/down), the loaded config at `<BASE_PATH>/` and `/api/config` with secrets redacted (`RedactURL`, header values); `<BASE_PATH>/events` + `/api/events`: in-process ring buffer of dispatched messages with each output's result (`events.go`, fed by `Dispatcher.OnDispatch`, links to the sink via `SINK_URL`); `/metrics` (`notification_catcher_dispatch_total{output,result}`, hand-written text format, no client lib); `AUTH_TOKEN`; see `docs/http-ui.md`
 - `internal/webui/` — shared by the sink and the UI: embedded page assets (`static/`, vendored, no CDN), `ParseBasePath`, token `Auth`
 - `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata); what `Dispatch` and every `Notifier.Send` take, so the `objectId` reaches the payloads (card footer, webhook `objectId` field, delivery log lines; #64)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
@@ -142,6 +142,8 @@ Branch-per-issue with PR and merge to main.
 | `HTTP_ADDR` | *(empty)* | Listen address of the optional read-only UI + `/healthz` (#22), e.g. `:8080`; empty: no listener |
 | `AUTH_TOKEN` | *(empty)* | Bearer / `?token=` for the UI page and `/api/config` (not `/healthz`) |
 | `BASE_PATH` | *(empty)* | URL prefix of the UI behind a proxy |
+| `EVENTS_CAPACITY` | `200` | Messages the UI's event log keeps |
+| `SINK_URL` | *(empty)* | The sink's UI; the event log links each objectId to `<SINK_URL>/?objectId=…` |
 | `LOG_FORMAT` | `json` | Log format: `json` or `text` |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs as usual but matching outputs log "would send" at INFO and skip the Notifier.Send call. Use on first reconciliation after a config change to verify routing without spamming Teams. |

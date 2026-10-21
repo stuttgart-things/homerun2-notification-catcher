@@ -30,6 +30,8 @@ _envData = {
         HTTP_ADDR: ":{}".format(config.httpContainerPort)
     if config.httpEnabled and config.httpBasePath:
         BASE_PATH: config.httpBasePath
+    if config.httpEnabled and config.httpSinkUrl:
+        SINK_URL: config.httpSinkUrl
 }
 
 configMapEnv = {

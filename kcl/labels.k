@@ -31,6 +31,7 @@ _httpContainerPort = option("config.httpContainerPort")
 _httpServicePort = option("config.httpServicePort")
 _httpBasePath = option("config.httpBasePath")
 _httpToken = option("config.httpToken")
+_httpSinkUrl = option("config.httpSinkUrl")
 _httpRouteEnabled = option("config.httpRouteEnabled")
 _httpRouteParentRefName = option("config.httpRouteParentRefName")
 _httpRouteParentRefNamespace = option("config.httpRouteParentRefNamespace")
@@ -96,6 +97,8 @@ config: schema.NotificationCatcher = schema.NotificationCatcher {
         httpBasePath = _httpBasePath
     if _httpToken:
         httpToken = _httpToken
+    if _httpSinkUrl:
+        httpSinkUrl = _httpSinkUrl
     if _httpRouteEnabled:
         httpRouteEnabled = _httpRouteEnabled in [True, "True", "true"]
     if _httpRouteParentRefName:
