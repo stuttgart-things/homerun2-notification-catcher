@@ -1,3 +1,10 @@
+# [3.9.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.8.0...v3.9.0) (2026-10-21)
+
+
+### Features
+
+* **server:** event log of dispatched messages, dispatch metrics and summary log ([96f585d](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/96f585dd105683ec9902a821004d0f5c56ba7f9f)), closes [#22](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/22) [#22](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/22) [#49](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/49)
+
 # [3.8.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.7.0...v3.8.0) (2026-10-21)
 
 
