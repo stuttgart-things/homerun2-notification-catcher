@@ -290,12 +290,13 @@ func TestEventsStream(t *testing.T) {
 			t.Fatalf("read: %v", err)
 		}
 		if data, ok := strings.CutPrefix(line, "data: "); ok {
-			var m Message
-			if err := json.Unmarshal([]byte(data), &m); err != nil {
+			var ev Event
+			if err := json.Unmarshal([]byte(data), &ev); err != nil {
 				t.Fatal(err)
 			}
-			if m.Title != "streamed" || m.Channel != "live" {
-				t.Errorf("event: %+v", m)
+			if ev.Post == nil || ev.Post.Title != "streamed" || ev.Post.Channel != "live" ||
+				ev.Notification == nil || ev.Notification.ID != ev.Post.NotificationID {
+				t.Errorf("event: %+v", ev)
 			}
 			return
 		}
@@ -483,6 +484,123 @@ func TestParseBasePath(t *testing.T) {
 	for _, in := range []string{"/../x", "/a b", `/"x`} {
 		if _, err := ParseBasePath(in); err == nil {
 			t.Errorf("ParseBasePath(%q): want error", in)
+		}
+	}
+}
+
+func listNotifications(t *testing.T, url string) []Notification {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var out []Notification
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// One catcher dispatch to a Teams and a webhook output is one notification
+// with two channels; the inbox adds messages that went nowhere.
+func TestNotificationsGroupDispatch(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	ctx := context.Background()
+
+	cfg := &config.NotifyConfig{Outputs: []config.OutputConfig{
+		{Name: "all", Type: "webhook", URL: ts.URL + "/inbox"},
+		{Name: "teams", Type: "msteams", WebhookURL: ts.URL + "/teams/platform",
+			Filters: config.OutputFilters{SeverityMin: "warning"},
+			// custom facts without Severity: grouping falls back to fallbackText
+			Card: config.CardConfig{Facts: []config.CardFactConfig{{Title: "Cluster", Tag: "cluster"}}}},
+		{Name: "slack", Type: "webhook", URL: ts.URL + "/webhook/slack",
+			Filters: config.OutputFilters{SeverityMin: "critical"}},
+	}}
+	d, err := notify.NewDispatcher(cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	crit := homerun.Message{Title: "node down", Message: "node-3 NotReady", Severity: "critical", System: "kubernetes", Author: "alertmanager", Tags: "cluster=labda"}
+	warn := homerun.Message{Title: "disk", Severity: "warning", System: "kubernetes"}
+	info := homerun.Message{Title: "cluster built", Severity: "info", System: "git-pitcher"}
+	for _, m := range []homerun.Message{crit, warn, info, crit} {
+		for _, r := range d.Dispatch(ctx, m) {
+			if r.Err != nil {
+				t.Fatalf("%s: %v", r.Output, r.Err)
+			}
+		}
+	}
+
+	got := listNotifications(t, ts.URL+"/api/notifications")
+	if len(got) != 4 {
+		t.Fatalf("want 4 notifications (critical twice), got %d: %+v", len(got), got)
+	}
+	channels := func(n Notification) string {
+		var cs []string
+		for _, d := range n.Deliveries {
+			cs = append(cs, d.Kind+"/"+d.Channel)
+		}
+		return strings.Join(cs, ",")
+	}
+	for i, want := range []struct {
+		title, channels string
+	}{
+		{"node down", "msteams/platform,webhook/slack"}, // the repeat is its own notification
+		{"cluster built", ""},
+		{"disk", "msteams/platform"},
+		{"node down", "msteams/platform,webhook/slack"},
+	} {
+		n := got[i]
+		if n.Title != want.title || channels(n) != want.channels || !n.Inbox {
+			t.Errorf("notification %d: %q %q inbox=%v, want %q %q", i, n.Title, channels(n), n.Inbox, want.title, want.channels)
+		}
+	}
+	if n := got[0]; n.Author != "alertmanager" || n.Message != "node-3 NotReady" || n.Tags != "cluster=labda" {
+		t.Errorf("fields from the inbox message: %+v", n)
+	}
+
+	posts := listMessages(t, ts.URL+"/api/messages?channel=platform")
+	if len(posts) != 3 || posts[0].NotificationID != got[0].ID {
+		t.Errorf("post → notification link: %+v", posts)
+	}
+	if got := listNotifications(t, ts.URL+"/api/notifications?q=disk&limit=5"); len(got) != 1 {
+		t.Errorf("q filter: %d", len(got))
+	}
+}
+
+// Without an inbox, Teams-only fields come from the card.
+func TestNotificationFromCardOnly(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	msg := homerun.Message{Title: "t", Message: "b", Severity: "error", System: "s", Author: "a", URL: "https://x.example"}
+	if err := notify.NewTeamsNotifier(ts.URL+"/teams/c", nil).Send(context.Background(), msg); err != nil {
+		t.Fatal(err)
+	}
+	got := listNotifications(t, ts.URL+"/api/notifications")
+	if len(got) != 1 {
+		t.Fatalf("got %d", len(got))
+	}
+	n := got[0]
+	if n.Title != "t" || n.Message != "b" || n.Severity != "error" || n.System != "s" || n.Author != "a" || n.URL != "https://x.example" || n.Inbox {
+		t.Errorf("notification: %+v", n)
+	}
+}
+
+func TestInboxRejectsNonMessages(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	for body, want := range map[string]int{
+		`{"title":"x"}`: http.StatusOK,
+		`{"text":"x"}`:  http.StatusBadRequest,
+		`{`:             http.StatusBadRequest,
+	} {
+		resp, err := http.Post(ts.URL+"/inbox", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%s: %d, want %d", body, resp.StatusCode, want)
 		}
 	}
 }

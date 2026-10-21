@@ -2,8 +2,9 @@
 
 A stand-in receiver for the catcher's outputs, for card design, e2e tests and
 debugging (#52). It takes what the outputs send, keeps it in memory, and
-shows **every notification in one list**: what arrived, on which target and
-channel, and for Teams posts what the card looks like in Teams.
+lists **every notification once, with the channels it went to**. A tab per
+system (MS Teams, Webhook) shows the posts as that system received them,
+Teams posts as the card Teams renders.
 
 It ships in the catcher's own binary/image as the `sink` subcommand, so the
 card playground uses the catcher's real card builder (`BuildEnvelopeWithCard`),
@@ -21,6 +22,12 @@ omni-pitcher → redis → notification-catcher ─┬─ msteams output ──�
 |---|---|---|
 | `POST /teams/{channel}` | Exactly what a Teams Workflow webhook takes: `{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard",…}}]}` | `202`, empty body, like Teams; `400` for anything else |
 | `POST /webhook/{channel}` | Any JSON (the `webhook` output sends a `homerun.Message`) | `200`; `400` for invalid JSON |
+| `POST /inbox` | A `homerun.Message` from a catch-all `webhook` output (no filters). Not a channel: it adds the messages that went to no channel to the list | `200`; `400` otherwise |
+
+Posts of one catcher dispatch are grouped into one notification: same
+severity, title and message (normalised as the Teams card builds them),
+arriving within 30 s (the catcher's fan-out cap), each channel once. The
+same message dispatched again becomes a new notification.
 
 The sink proves *what the catcher sent*, not that Teams posted it, and it
 only sees messages that matched an output pointed at it.
@@ -67,6 +74,11 @@ outputs:
     type: webhook
     url: http://notify-sink.homerun2.svc:8080/webhook/slack?token=${SINK_TOKEN}
     filters: { severity_min: critical }
+
+  # optional: everything the catcher caught, also what matched no output
+  - name: sink-inbox
+    type: webhook
+    url: http://notify-sink.homerun2.svc:8080/inbox?token=${SINK_TOKEN}
 ```
 
 Or without Redis, through the smoke subcommand:
@@ -77,30 +89,36 @@ Or without Redis, through the smoke subcommand:
 
 ## HTML view (`GET /`)
 
-- One tile per target and channel with its count (click to filter), then a
-  table of every notification, newest first, updated live over server-sent
-  events. Filters: search, target kind, channel, severity.
-- Click a row for its details. Teams posts show **how the card looks in
-  Teams**, rendered with Microsoft's Adaptive Cards JS renderer
-  (`adaptivecards@3.0.4` from unpkg) with a host config close to Teams dark
-  or light, plus the notification preview line (`fallbackText`, #45) and the
-  raw payload. Without internet access the page falls back to a plain
-  renderer. Webhook posts show their JSON payload.
-- **Card playground** (header): paste a `homerun.Message` JSON and an
-  output's `card:` YAML, and see the card the catcher would send. Invalid
-  card configs are rejected with the config loader's error.
+Tabs, in the homerun2-core-catcher layout (filters, table, detail panel):
 
-Add `?token=<token>` to the page URL when a token is set.
+- **Notifications**: every notification once (title, severity, system,
+  author, time) with a **Channels** column: the targets it went to, or
+  *not routed* (needs the inbox). Filter by search, severity, system,
+  channel. A click opens the details; a click on a channel opens that post
+  in its system's tab.
+- **MS Teams**: the Teams posts; the detail shows the card as Teams renders
+  it (Microsoft's Adaptive Cards JS renderer, `adaptivecards@3.0.4` from
+  unpkg, with a host config close to Teams dark or light; a plain renderer
+  without internet), the notification preview line (`fallbackText`, #45)
+  and the raw payload.
+- **Webhook**: the webhook posts with their JSON payload.
+- **Card playground**: paste a `homerun.Message` JSON and an output's
+  `card:` YAML, and see the card the catcher would send. Invalid card
+  configs are rejected with the config loader's error.
+
+The tab is kept in the URL (`#msteams`, …). Add `?token=<token>` to the page
+URL when a token is set.
 
 ## API
 
 | Route | |
 |---|---|
+| `GET /api/notifications` | Notifications, newest first, each with `deliveries` (`postId`, `kind`, `channel`, `receivedAt`) and `inbox`. Query: `q` (title, message, system, tags), `limit` |
 | `GET /api/messages` | Posts, newest first. Query: `kind` (`msteams`, `webhook`), `channel`, `since` (RFC3339), `after` (seq cursor), `objectId` or `q` (substring of the body), `fact=Title=Value` (repeatable, case-insensitive), `limit` |
 | `GET /api/messages/{id}` | The posted body, as received |
 | `DELETE /api/messages[?kind=&channel=]` | Clear matching posts (all without parameters) |
 | `GET /api/channels` | `{"<kind>/<channel>": count}` |
-| `GET /api/events` | Server-sent events, one `message` event per new post |
+| `GET /api/events` | Server-sent events, one `message` event per new post or inbox entry: `{"post": …, "notification": …}` |
 | `POST /api/render` | `{"message": {…homerun.Message}, "card": "<card YAML>"}` → the envelope `BuildEnvelopeWithCard` builds |
 | `PUT /api/faults/{kind}/{channel}` | Fault injection: `{"status":429,"delay":"2s","count":3}`. Waits `delay`, then answers `status` (if set) instead of accepting the post; `count` limits it to that many posts (0 = until cleared) |
 | `DELETE /api/faults/{kind}/{channel}`, `GET /api/faults` | Clear / list faults |
@@ -109,7 +127,8 @@ Add `?token=<token>` to the page URL when a token is set.
 Each listed post carries `id`, `seq`, `kind`, `channel`, `receivedAt`, `raw`,
 `envelope` (Teams posts), and summary fields: `title`, `severity`, `system`,
 `facts` (FactSet title → value, or the message fields for webhook posts),
-`fallbackText` and `style` (header Container style) for Teams posts.
+`fallbackText` and `style` (header Container style) for Teams posts, and
+`notificationId`.
 
 ## Asserting a notification in a test
 

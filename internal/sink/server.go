@@ -98,6 +98,8 @@ func (s *Server) Handler() http.Handler {
 	app := http.NewServeMux()
 	app.HandleFunc("POST /teams/{channel}", s.auth(s.handleTeams))
 	app.HandleFunc("POST /webhook/{channel}", s.auth(s.handleWebhook))
+	app.HandleFunc("POST /inbox", s.auth(s.handleInbox))
+	app.HandleFunc("GET /api/notifications", s.auth(s.handleNotifications))
 	app.HandleFunc("GET /api/channels", s.auth(s.handleChannels))
 	app.HandleFunc("GET /api/messages", s.auth(s.handleList))
 	app.HandleFunc("DELETE /api/messages", s.auth(s.handleClear))
@@ -227,6 +229,41 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	m := s.store.AddWebhook(channel, raw)
 	slog.Info("sink received", "kind", KindWebhook, "channel", channel, "id", m.ID, "title", m.Title)
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleInbox takes the homerun.Message JSON of a catch-all webhook output
+// (no filters), so the notification list also shows messages that went to
+// no channel. It answers 200.
+func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
+	if err != nil || len(raw) > maxBodyBytes {
+		http.Error(w, "unreadable or too large body", http.StatusBadRequest)
+		return
+	}
+	msg, ok := decodeMessage(raw)
+	if !ok {
+		http.Error(w, "body must be a homerun.Message JSON", http.StatusBadRequest)
+		return
+	}
+	n := s.store.AddInbox(msg)
+	slog.Debug("sink inbox", "notification", n.ID, "title", n.Title)
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleNotifications serves GET /api/notifications: the posts grouped per
+// dispatched message, newest first, each with the channels it went to.
+// Query parameters: q (substring of title, message, system, tags), limit.
+func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
+	q := Query{Contains: r.URL.Query().Get("q")}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		n, err := strconv.Atoi(limit)
+		if err != nil || n < 0 {
+			http.Error(w, "limit must be a non-negative integer", http.StatusBadRequest)
+			return
+		}
+		q.Limit = n
+	}
+	writeJSON(w, http.StatusOK, s.store.Notifications(q))
 }
 
 // receive applies the channel's fault and reads the body. It writes the
@@ -361,7 +398,8 @@ func (s *Server) handleClear(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleEvents streams new posts as server-sent events for the HTML view.
+// handleEvents streams an Event per new post or inbox entry as server-sent
+// events for the HTML view.
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -387,8 +425,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-keepalive.C:
 			_, _ = io.WriteString(w, ": keepalive\n\n")
 			flusher.Flush()
-		case m := <-ch:
-			b, err := json.Marshal(m)
+		case ev := <-ch:
+			b, err := json.Marshal(ev)
 			if err != nil {
 				continue
 			}
