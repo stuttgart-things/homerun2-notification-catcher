@@ -1,3 +1,10 @@
+# [3.3.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.2.1...v3.3.0) (2026-10-21)
+
+
+### Features
+
+* **kcl:** deploy the notification sink (Deployment, Service, HTTPRoute) ([83709f0](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/83709f0c2aa43e59cc00d263be851bd4864fd8ff)), closes [#54](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/54)
+
 ## [3.2.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.2.0...v3.2.1) (2026-10-21)
 
 
