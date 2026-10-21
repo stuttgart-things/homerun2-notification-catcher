@@ -18,7 +18,7 @@ import (
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
-	"github.com/stuttgart-things/homerun2-notification-catcher/internal/teamsmock"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/sink"
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 )
@@ -43,9 +43,9 @@ func main() {
 		}
 		return
 	}
-	if len(os.Args) > 1 && os.Args[1] == "teams-mock" {
-		if err := runTeamsMock(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "teams-mock:", err)
+	if len(os.Args) > 1 && os.Args[1] == "sink" {
+		if err := runSink(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "sink:", err)
 			os.Exit(1)
 		}
 		return
@@ -246,32 +246,43 @@ func printSmokeResults(results []notify.DispatchResult) error {
 	return nil
 }
 
-// runTeamsMock serves a Teams-shaped webhook sink (#52): point a msteams
-// output at http://<mock>/webhook/<channel> and the cards show up in the
-// HTML view at / and in GET /api/messages for tests. No Redis needed.
+// runSink serves the notification sink (#52): point an msteams output at
+// http://<sink>/teams/<channel> or a webhook output at
+// http://<sink>/webhook/<channel>, and every post shows up in the HTML view
+// at / -- Teams posts rendered as Teams shows them -- and in
+// GET /api/messages for tests. No Redis needed.
 //
-//	notification-catcher teams-mock --addr :8080 --capacity 500
+//	notification-catcher sink --addr :8080 --capacity 500
 //
-// TEAMS_MOCK_TOKEN, when set, is required on every route but /healthz, as
-// "Authorization: Bearer <token>" or "?token=<token>".
-func runTeamsMock(args []string) error {
-	fs := flag.NewFlagSet("teams-mock", flag.ContinueOnError)
+// SINK_TOKEN, when set, is required on every route but the health checks,
+// as "Authorization: Bearer <token>" or "?token=<token>". BASE_PATH serves
+// the UI under a prefix, as in homerun2-core-catcher.
+func runSink(args []string) error {
+	fs := flag.NewFlagSet("sink", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
 	var (
-		addr     = fs.String("addr", homerun.GetEnv("TEAMS_MOCK_ADDR", ":8080"), "listen address")
-		capacity = fs.Int("capacity", teamsmock.DefaultCapacity, "posts kept per channel (oldest drop first)")
+		addr     = fs.String("addr", homerun.GetEnv("SINK_ADDR", ":8080"), "listen address")
+		capacity = fs.Int("capacity", sink.DefaultCapacity, "posts kept per channel (oldest drop first)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	config.SetupLogging()
-	token := os.Getenv("TEAMS_MOCK_TOKEN")
+	basePath, err := sink.ParseBasePath(os.Getenv("BASE_PATH"))
+	if err != nil {
+		return err
+	}
+	opts := sink.Options{
+		Token:    os.Getenv("SINK_TOKEN"),
+		BasePath: basePath,
+		Build:    sink.BuildInfo{Version: version, Commit: commit, Date: date},
+	}
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           teamsmock.NewServer(teamsmock.NewStore(*capacity), token).Handler(),
+		Handler:           sink.NewServer(sink.NewStore(*capacity), opts).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -284,10 +295,11 @@ func runTeamsMock(args []string) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	slog.Info("teams-mock listening",
+	slog.Info("sink listening",
 		"addr", *addr,
+		"base_path", basePath,
 		"capacity", *capacity,
-		"auth", token != "",
+		"auth", opts.Token != "",
 		"version", version,
 	)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

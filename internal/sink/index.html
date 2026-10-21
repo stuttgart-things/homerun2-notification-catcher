@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOMERUN² · Notification sink</title>
+    <script>
+        // In homerun2-portal's iframe the portal shows the brand and the
+        // service name: hr-embedded switches to the compact header. Set before
+        // the first paint, so the big banner never flashes.
+        if (window.self !== window.top) document.documentElement.classList.add('hr-embedded');
+    </script>
+    <link rel="icon" type="image/png" href="{{.BasePath}}/static/favicon.png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/adaptivecards@3.0.4/dist/adaptivecards.min.js"></script>
+    <style>
+        /* The homerun2 design tokens: a copy of homerun2-portal's
+           static/homerun2-tokens.css for running without the portal. Behind
+           it the page also links the portal's file (after this block), and
+           its :root wins over this zero-specificity copy. */
+        :where(:root) {
+            --hr-bg: #0b1120;
+            --hr-surface: #111827;
+            --hr-card: #1e293b;
+            --hr-border: #334155;
+            --hr-text: #e2e8f0;
+            --hr-muted: #94a3b8;
+            --hr-accent: #6366f1;
+            --hr-accent-2: #a855f7;
+            --hr-accent-3: #f97316;
+            --hr-ok: #22c55e;
+            --hr-info: #38bdf8;
+            --hr-warning: #eab308;
+            --hr-error: #ef4444;
+        }
+        :root { --pico-font-size: 14px; }
+        body { background: var(--hr-bg); }
+        .severity-error { color: var(--hr-error); font-weight: bold; }
+        .severity-warning { color: var(--hr-warning); font-weight: bold; }
+        .severity-success { color: var(--hr-ok); font-weight: bold; }
+        .severity-info { color: var(--hr-info); font-weight: bold; }
+        .severity-debug { color: #64748b; }
+        .header-bar { background: linear-gradient(135deg, var(--hr-accent) 0%, var(--hr-accent-2) 100%); color: #f8fafc; padding: 1.8rem 1.5rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid var(--hr-accent-3); }
+        .header-bar h1 { margin: 0; font-family: 'Press Start 2P', cursive; font-size: 2.2rem; color: #ffffff; letter-spacing: 0.08em; text-shadow: 3px 3px 0px rgba(0,0,0,0.3); }
+        .header-bar .subtitle { font-family: 'Press Start 2P', cursive; font-size: 0.7rem; color: #fbbf24; margin-top: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase; }
+        .header-bar .actions { display: flex; gap: 0.5rem; }
+        .header-bar a { color: #e2e8f0; font-size: 0.85rem; }
+        .header-bar a:hover { color: #f8fafc; }
+        /* The compact header inside homerun2-portal (README there, "Embedded
+           header"): one line on the portal's surface, no brand, the subtitle
+           on the left and the actions on the right. */
+        .hr-embedded .header-bar { font-family: var(--hr-font, system-ui, sans-serif); background: var(--hr-surface); border-bottom: 1px solid var(--hr-border); min-height: 44px; padding: 6px 16px; align-items: center; }
+        .hr-embedded .header-bar h1 { display: none; }
+        .hr-embedded .header-bar .subtitle { font-family: inherit; font-size: 13px; color: var(--hr-muted); margin: 0; letter-spacing: normal; text-transform: none; }
+        .hr-embedded .header-bar .actions a { font-size: 12px; color: var(--hr-accent); text-decoration: none; }
+        table { font-size: 0.85rem; }
+        thead th { background: var(--hr-card); color: #818cf8; text-transform: uppercase; }
+        .clickable { cursor: pointer; }
+        .clickable:hover, .clickable.selected { background: rgba(99,102,241,0.15); }
+        .detail-panel { background: var(--hr-card); border: 1px solid var(--hr-border); padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; }
+        .detail-panel dt { color: #818cf8; font-weight: bold; }
+        .detail-panel dd { margin-bottom: 0.5rem; margin-left: 0; color: var(--hr-text); word-break: break-word; }
+        .detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; }
+        .detail-head h3 { margin: 0; }
+        .detail-head a { font-size: 0.85rem; }
+        .detail-grid { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.4fr); gap: 1.5rem; }
+        @media (max-width: 768px) { .detail-grid { grid-template-columns: 1fr; } }
+        .preview-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; color: #818cf8; font-weight: bold; }
+        .preview-head select { width: auto; margin: 0; padding: 0.2rem 2rem 0.2rem 0.5rem; font-size: 0.8rem; }
+        .teams-frame { border-radius: 6px; padding: 12px; }
+        .teams-frame.dark { background: #1f1f1f; }
+        .teams-frame.light { background: #f5f5f5; }
+        .teams-frame .ac-adaptiveCard { border-radius: 4px; }
+        /* Keep Pico's table look out of the card's FactSet. */
+        .teams-frame table { width: auto; margin: 0; font-size: inherit; }
+        .teams-frame td, .teams-frame th { background: transparent; border: 0; color: inherit; font-size: inherit; padding: 0 8px 2px 0; }
+        .fallback-line { margin-top: 0.75rem; font-size: 0.8rem; color: var(--hr-muted); }
+        .fallback-line strong { color: #818cf8; font-weight: normal; }
+        pre.payload { font-size: 0.75rem; max-height: 420px; overflow: auto; margin: 0; }
+        details > summary { font-size: 0.85rem; color: #818cf8; }
+        .controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+        .controls input[type="search"] { max-width: 250px; margin: 0; }
+        .controls select { max-width: 200px; margin: 0; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+        .controls .live { margin-left: auto; font-size: 0.8rem; color: var(--hr-muted); }
+        .controls .live.on::before { content: "● "; color: var(--hr-ok); }
+        .targets { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .target { background: var(--hr-card); border: 1px solid var(--hr-border); border-radius: 0.5rem; padding: 0.6rem 0.9rem; cursor: pointer; min-width: 150px; }
+        .target:hover, .target.active { border-color: var(--hr-accent); }
+        .target .count { font-size: 1.4rem; font-weight: bold; color: var(--hr-text); }
+        .target .name { font-size: 0.8rem; color: var(--hr-muted); }
+        .kind { display: inline-block; font-size: 0.7rem; font-weight: bold; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.1rem 0.45rem; border-radius: 0.25rem; margin-right: 0.35rem; }
+        .kind-msteams { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+        .kind-webhook { background: rgba(249,115,22,0.18); color: #fdba74; }
+        .filter-count { font-size: 0.85rem; color: var(--pico-muted-color); }
+        .filter-count strong { color: #818cf8; }
+        .empty-hint { text-align: center; color: var(--pico-muted-color); }
+        #playground textarea { font-family: ui-monospace, monospace; font-size: 0.8rem; min-height: 170px; }
+        #pg-error { color: var(--hr-error); white-space: pre-wrap; font-size: 0.85rem; }
+        .fallback-card { padding: 12px; border-left: 4px solid #475569; background: #292929; color: #fff; }
+        .light .fallback-card { background: #fff; color: #242424; }
+        .fallback-card.attention { border-left-color: #c4314b; }
+        .fallback-card.warning { border-left-color: #f8d22a; }
+        .fallback-card.good { border-left-color: #237b4b; }
+        .fallback-card .t { font-size: 1.1rem; font-weight: 600; }
+        .fallback-card table { margin: 8px 0 0; font-size: 0.85rem; }
+        .fallback-card td { padding: 2px 12px 2px 0; border: 0; background: transparent; color: inherit; }
+        .fallback-card td:first-child { font-weight: 600; }
+        .build-footer { background: var(--hr-card); color: #475569; padding: 0.6rem 1.5rem; margin-top: 1rem; display: flex; gap: 1.5rem; font-size: 0.75rem; border-top: 1px solid var(--hr-border); }
+        .build-footer .label { color: #64748b; }
+        .build-footer .value { color: #818cf8; }
+    </style>
+    {{if .PortalTheme}}<link rel="stylesheet" href="/static/homerun2-tokens.css">{{end}}
+</head>
+<body data-base="{{.BasePath}}">
+    <div class="header-bar">
+        <div>
+            <a href="{{.BasePath}}/" style="text-decoration:none;color:inherit">
+                <h1>HOMERUN²</h1>
+                <div class="subtitle">Notification sink</div>
+            </a>
+        </div>
+        <div class="actions">
+            <a href="#" id="pg-toggle">Card playground</a>
+            <a href="{{.BasePath}}/api/messages" id="api-link" target="_blank">API JSON</a>
+        </div>
+    </div>
+    <main class="container-fluid">
+        <div class="targets" id="targets"></div>
+
+        <div class="controls">
+            <input type="search" id="q" placeholder="Search...">
+            <select id="kind">
+                <option value="">All Targets</option>
+                <option value="msteams">MS Teams</option>
+                <option value="webhook">Webhook</option>
+            </select>
+            <select id="channel"><option value="">All Channels</option></select>
+            <select id="severity">
+                <option value="">All Severities</option>
+                <option>critical</option><option>error</option><option>warning</option>
+                <option>success</option><option>info</option><option>debug</option>
+            </select>
+            <span class="live" id="status">connecting…</span>
+        </div>
+
+        <section id="playground" class="detail-panel" hidden>
+            <div class="detail-head">
+                <h3>Card playground</h3>
+                <a href="#" id="pg-close">✕ Close</a>
+            </div>
+            <div class="detail-grid">
+                <div>
+                    <label for="pg-message">homerun.Message (JSON)</label>
+                    <textarea id="pg-message">{
+  "title": "disk almost full",
+  "message": "/var is at 91% on node-3",
+  "severity": "warning",
+  "system": "kubernetes",
+  "author": "omni-pitcher",
+  "tags": "infra,storage,cluster=labda",
+  "url": "https://grafana.example/d/disk"
+}</textarea>
+                    <label for="pg-card">Output <code>card:</code> block (YAML, empty = default card)</label>
+                    <textarea id="pg-card" placeholder="facts:&#10;  - title: Cluster&#10;    tag: cluster&#10;  - title: System&#10;    field: system"></textarea>
+                    <button id="pg-render" type="button">Render</button>
+                    <div id="pg-error"></div>
+                </div>
+                <div id="pg-out"></div>
+            </div>
+        </section>
+
+        <div id="message-detail"></div>
+
+        <table>
+            <thead>
+                <tr><th>Received</th><th>Title</th><th>Severity</th><th>System</th><th>Target</th></tr>
+            </thead>
+            <tbody id="rows"></tbody>
+        </table>
+        <span class="filter-count" id="count"></span>
+    </main>
+    <div class="build-footer">
+        <div style="display:flex;gap:1.5rem">
+            <div><span class="label">version</span> <span class="value">{{.Version}}</span></div>
+            <div><span class="label">commit</span> <span class="value">{{.Commit}}</span></div>
+            <div><span class="label">built</span> <span class="value">{{.Date}}</span></div>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.5rem"><span class="label">a</span> <a href="https://github.com/stuttgart-things" target="_blank" style="color:#818cf8;text-decoration:none">stuttgart-things</a> <span class="label">project</span> <img src="https://raw.githubusercontent.com/stuttgart-things/docs/main/hugo/sthings-logo.png" alt="sthings" style="height:24px;"></div>
+    </div>
+
+<script>
+(function () {
+    "use strict";
+    const base = document.body.dataset.base || "";
+    const token = new URLSearchParams(location.search).get("token");
+    const url = (path) => {
+        const u = base + path;
+        return token ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : u;
+    };
+    const $ = (id) => document.getElementById(id);
+    const el = (tag, props, ...children) => {
+        const e = Object.assign(document.createElement(tag), props || {});
+        children.forEach((c) => c != null && e.append(c));
+        return e;
+    };
+    $("api-link").href = url("/api/messages");
+
+    const KIND_LABEL = { msteams: "MS Teams", webhook: "Webhook" };
+    const state = { posts: [], selected: null };
+    let cardTheme = "dark";
+    try { cardTheme = localStorage.getItem("sink-card-theme") || "dark"; } catch (e) {}
+
+    function severityClass(sev) {
+        switch ((sev || "").toLowerCase()) {
+            case "critical": case "error": return "severity-error";
+            case "warning": return "severity-warning";
+            case "success": return "severity-success";
+            case "debug": return "severity-debug";
+            default: return "severity-info";
+        }
+    }
+    const kindBadge = (kind) => el("span", { className: "kind kind-" + kind, textContent: KIND_LABEL[kind] || kind });
+    const fmtTime = (t) => { const d = new Date(t); return d.toLocaleDateString("sv") + " " + d.toLocaleTimeString("sv"); };
+
+    // --- Adaptive Card rendering ------------------------------------------
+    // Host config approximating Teams' light and dark themes.
+    function hostConfig(dark) {
+        const fg = (d, l) => ({ default: d, subtle: l });
+        const fgSet = dark ? {
+            default: fg("#FFFFFF", "#ADADAD"), dark: fg("#000000", "#333333"), light: fg("#FFFFFF", "#ADADAD"),
+            accent: fg("#7F85F5", "#AAB0FA"), good: fg("#92C353", "#A8D07A"), warning: fg("#F8D22A", "#FADF6A"),
+            attention: fg("#E5737F", "#EE969F")
+        } : {
+            default: fg("#242424", "#616161"), dark: fg("#000000", "#333333"), light: fg("#FFFFFF", "#F0F0F0"),
+            accent: fg("#5B5FC7", "#7F85F5"), good: fg("#237B4B", "#4E9A6A"), warning: fg("#835B00", "#A87A1A"),
+            attention: fg("#C4314B", "#D45A6E")
+        };
+        const bg = dark
+            ? { default: "#292929", emphasis: "#1F1F1F", good: "#0D2E0D", attention: "#3E1F25", warning: "#463100", accent: "#2F2F4A" }
+            : { default: "#FFFFFF", emphasis: "#F5F5F5", good: "#E7F2DA", attention: "#FCF4F6", warning: "#FBF6D9", accent: "#E8EBFA" };
+        const containerStyles = {};
+        for (const k of Object.keys(bg)) containerStyles[k] = { backgroundColor: bg[k], foregroundColors: fgSet };
+        return {
+            fontFamily: "Segoe UI, system-ui, sans-serif",
+            supportsInteractivity: true,
+            spacing: { small: 4, default: 8, medium: 12, large: 16, extraLarge: 24, padding: 12 },
+            fontSizes: { small: 12, default: 14, medium: 14, large: 18, extraLarge: 24 },
+            fontWeights: { lighter: 300, default: 400, bolder: 600 },
+            containerStyles: containerStyles,
+            factSet: { title: { weight: "bolder", wrap: true, maxWidth: 150 }, value: { wrap: true }, spacing: 8 },
+            actions: { maxActions: 6, buttonSpacing: 8, showCard: { actionMode: "inline" }, actionsOrientation: "horizontal", actionAlignment: "left" }
+        };
+    }
+
+    function renderCard(content) {
+        if (window.AdaptiveCards) {
+            try {
+                const card = new AdaptiveCards.AdaptiveCard();
+                card.hostConfig = new AdaptiveCards.HostConfig(hostConfig(cardTheme === "dark"));
+                card.onExecuteAction = (a) => { if (a.url) window.open(a.url, "_blank", "noopener"); };
+                card.parse(content);
+                const out = card.render();
+                if (out) return out;
+            } catch (e) {
+                console.warn("adaptivecards render failed", e);
+            }
+        }
+        return fallbackCard(content);
+    }
+
+    // Minimal renderer for when the adaptivecards script cannot load
+    // (offline cluster): title, text blocks, facts, severity stripe, links.
+    function fallbackCard(content) {
+        const box = el("div", { className: "fallback-card" });
+        let first = true;
+        const walk = (items) => (items || []).forEach((e) => {
+            if (e.type === "Container" && e.style && box.classList.length === 1) box.classList.add(e.style);
+            if (e.type === "TextBlock") {
+                box.append(el("div", { className: first ? "t" : "", textContent: e.text || "" }));
+                first = false;
+            } else if (e.type === "FactSet") {
+                const t = el("table");
+                (e.facts || []).forEach((f) => {
+                    const tr = t.insertRow();
+                    tr.insertCell().textContent = f.title;
+                    tr.insertCell().textContent = f.value;
+                });
+                box.append(t);
+            }
+            walk(e.items);
+        });
+        walk(content && content.body);
+        ((content && content.actions) || []).forEach((a) => {
+            if (a.type !== "Action.OpenUrl" || !/^https?:/i.test(a.url || "")) return;
+            box.append(el("div", {}, el("a", { href: a.url, target: "_blank", rel: "noopener", textContent: a.title || a.url })));
+        });
+        return box;
+    }
+
+    // teamsPreview shows a Teams envelope the way Teams would: the cards on
+    // the channel background, plus the plain-text line previews show.
+    function teamsPreview(envelope, fallbackText, onTheme) {
+        const sel = el("select", {}, el("option", { value: "dark", textContent: "Teams dark" }), el("option", { value: "light", textContent: "Teams light" }));
+        sel.value = cardTheme;
+        sel.onchange = () => {
+            cardTheme = sel.value;
+            try { localStorage.setItem("sink-card-theme", cardTheme); } catch (e) {}
+            onTheme();
+        };
+        const frame = el("div", { className: "teams-frame " + cardTheme });
+        ((envelope && envelope.attachments) || []).forEach((a) => frame.append(renderCard(a.content)));
+        return el("div", {},
+            el("div", { className: "preview-head" }, el("span", { textContent: "How it looks in Teams" }), sel),
+            frame,
+            el("div", { className: "fallback-line" },
+                el("strong", { textContent: "Notification preview: " }),
+                fallbackText || "(no fallbackText: Teams shows \"Card - access it on…\")"));
+    }
+
+    // --- list and detail ---------------------------------------------------
+    function matches(p) {
+        const kind = $("kind").value, channel = $("channel").value, sev = $("severity").value;
+        if (kind && p.kind !== kind) return false;
+        if (channel && p.kind + "/" + p.channel !== channel) return false;
+        if (sev && (p.severity || "").toLowerCase() !== sev) return false;
+        const q = $("q").value.trim().toLowerCase();
+        if (!q) return true;
+        const hay = [p.title, p.fallbackText, p.channel, p.severity, p.system]
+            .concat(Object.entries(p.facts || {}).map(([k, v]) => k + "=" + v)).join("\n").toLowerCase();
+        return hay.includes(q);
+    }
+
+    function renderTargets() {
+        const counts = new Map();
+        state.posts.forEach((p) => {
+            const key = p.kind + "/" + p.channel;
+            counts.set(key, (counts.get(key) || 0) + 1);
+        });
+        const keys = [...counts.keys()].sort();
+        const active = $("channel").value;
+        $("targets").replaceChildren(...keys.map((key) => {
+            const [kind, ...rest] = key.split("/");
+            const card = el("div", { className: "target" + (key === active ? " active" : "") },
+                el("div", { className: "count", textContent: counts.get(key) }),
+                el("div", { className: "name" }, kindBadge(kind), rest.join("/")));
+            card.onclick = () => { $("channel").value = key === active ? "" : key; renderList(); };
+            return card;
+        }));
+        const sel = $("channel");
+        const keep = sel.value;
+        sel.replaceChildren(el("option", { value: "", textContent: "All Channels" }),
+            ...keys.map((k) => el("option", { value: k, textContent: (KIND_LABEL[k.split("/")[0]] || "") + " · " + k.split("/").slice(1).join("/") })));
+        sel.value = keep;
+    }
+
+    function renderRows() {
+        const shown = state.posts.filter(matches);
+        const rows = shown.map((p) => {
+            const tr = el("tr", { className: "clickable" + (state.selected === p.id ? " selected" : "") },
+                el("td", { textContent: fmtTime(p.receivedAt) }),
+                el("td", { textContent: p.title || "(no title)" }),
+                el("td", {}, el("span", { className: severityClass(p.severity), style: "text-transform:uppercase", textContent: p.severity || "" })),
+                el("td", { textContent: p.system || "" }),
+                el("td", {}, kindBadge(p.kind), p.channel));
+            tr.onclick = () => { state.selected = state.selected === p.id ? null : p.id; render(); };
+            return tr;
+        });
+        if (rows.length === 0) {
+            const hint = state.posts.length
+                ? "No notifications match the current filters"
+                : "No notifications yet. Point an msteams output at " + base + "/teams/<channel> or a webhook output at " + base + "/webhook/<channel>.";
+            rows.push(el("tr", {}, el("td", { colSpan: 5, className: "empty-hint", textContent: hint })));
+        }
+        $("rows").replaceChildren(...rows);
+        $("count").replaceChildren(el("strong", { textContent: shown.length }), " / " + state.posts.length + " notifications");
+    }
+
+    function renderDetail() {
+        const p = state.posts.find((x) => x.id === state.selected);
+        if (!p) { $("message-detail").replaceChildren(); return; }
+        const close = el("a", { href: "#", textContent: "✕ Close" });
+        close.onclick = (e) => { e.preventDefault(); state.selected = null; render(); };
+
+        const dl = el("dl");
+        const add = (k, v) => { if (v) dl.append(el("dt", { textContent: k }), el("dd", {}, v)); };
+        add("Target", el("span", {}, kindBadge(p.kind), p.channel));
+        add("Received", fmtTime(p.receivedAt));
+        add("Severity", p.severity && el("span", { className: severityClass(p.severity), style: "text-transform:uppercase", textContent: p.severity }));
+        add("System", p.system);
+        Object.entries(p.facts || {}).forEach(([k, v]) => { if (k !== "Severity" && k !== "System") add(k, v); });
+        add("ID", p.id);
+
+        const raw = el("details", {}, el("summary", { textContent: "Raw payload" }),
+            el("pre", { className: "payload", textContent: JSON.stringify(p.raw, null, 2) }));
+        let preview;
+        if (p.kind === "msteams") {
+            preview = el("div", {}, teamsPreview(p.envelope, p.fallbackText, renderDetail), raw);
+        } else {
+            preview = el("div", {},
+                el("div", { className: "preview-head" }, el("span", { textContent: "Webhook payload (generic JSON)" })),
+                el("pre", { className: "payload", textContent: JSON.stringify(p.raw, null, 2) }));
+        }
+        $("message-detail").replaceChildren(el("div", { className: "detail-panel" },
+            el("div", { className: "detail-head" }, el("h3", { textContent: p.title || "(no title)" }), close),
+            el("div", { className: "detail-grid" }, dl, preview)));
+    }
+
+    // The detail panel is rebuilt only when the selection changes, so a new
+    // post arriving does not collapse what the reader has open.
+    function renderList() { renderTargets(); renderRows(); }
+    function render() { renderList(); renderDetail(); }
+    ["q", "kind", "channel", "severity"].forEach((id) => $(id).addEventListener("input", renderList));
+
+    // --- data --------------------------------------------------------------
+    const MAX_POSTS = 5000;
+    function addPost(p) {
+        if (state.posts.some((x) => x.id === p.id)) return;
+        state.posts.push(p);
+        state.posts.sort((a, b) => b.seq - a.seq);
+        if (state.posts.length > MAX_POSTS) state.posts.length = MAX_POSTS;
+    }
+
+    async function load() {
+        const res = await fetch(url("/api/messages"));
+        if (!res.ok) throw new Error("GET /api/messages: " + res.status);
+        (await res.json()).forEach(addPost);
+        render();
+    }
+
+    function connect() {
+        const es = new EventSource(url("/api/events"));
+        es.onopen = () => { $("status").textContent = "live"; $("status").classList.add("on"); };
+        es.onerror = () => { $("status").textContent = "reconnecting…"; $("status").classList.remove("on"); };
+        es.addEventListener("message", (ev) => { addPost(JSON.parse(ev.data)); renderList(); });
+    }
+
+    load().then(connect).catch((e) => { $("status").textContent = String(e); });
+
+    // --- playground ----------------------------------------------------------
+    let lastEnvelope = null;
+    const togglePlayground = (open) => { $("playground").hidden = !open; };
+    $("pg-toggle").onclick = (e) => { e.preventDefault(); togglePlayground($("playground").hidden); };
+    $("pg-close").onclick = (e) => { e.preventDefault(); togglePlayground(false); };
+    function renderPlayground() {
+        if (!lastEnvelope) { $("pg-out").replaceChildren(); return; }
+        const fb = lastEnvelope.attachments[0] && lastEnvelope.attachments[0].content.fallbackText;
+        $("pg-out").replaceChildren(teamsPreview(lastEnvelope, fb, renderPlayground));
+    }
+    $("pg-render").onclick = async () => {
+        $("pg-error").textContent = "";
+        let message;
+        try { message = JSON.parse($("pg-message").value); } catch (e) { $("pg-error").textContent = "message: " + e.message; return; }
+        const res = await fetch(url("/api/render"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: message, card: $("pg-card").value })
+        });
+        if (!res.ok) { $("pg-error").textContent = await res.text(); return; }
+        lastEnvelope = await res.json();
+        renderPlayground();
+    };
+})();
+</script>
+</body>
+</html>

@@ -1,13 +1,17 @@
-package teamsmock
+package sink
 
 import (
+	"bytes"
 	"crypto/subtle"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,8 +33,14 @@ const (
 	maxBodyBytes = 1 << 20
 )
 
-//go:embed index.html
-var indexHTML []byte
+var (
+	//go:embed index.html
+	indexSrc  string
+	indexTmpl = template.Must(template.New("index").Parse(indexSrc))
+
+	//go:embed static
+	staticFS embed.FS
+)
 
 // Fault makes the webhook of one channel misbehave, to exercise the
 // catcher's error and retry path: wait Delay, then answer Status (when set)
@@ -47,47 +57,126 @@ type faultJSON struct {
 	Count  int    `json:"count,omitempty"`
 }
 
-// Server serves the webhook, the JSON API and the HTML view.
+// BuildInfo is shown in the page footer, as in the other homerun2 UIs.
+type BuildInfo struct {
+	Version string
+	Commit  string
+	Date    string
+}
+
+// Options configure a Server.
+type Options struct {
+	// Token, when set, is required as "Authorization: Bearer <token>" or
+	// "?token=<token>" on every route but the health checks.
+	Token string
+	// BasePath is the URL prefix behind a reverse proxy, e.g. "/notify"
+	// behind homerun2-portal; see ParseBasePath. Health stays at the root.
+	BasePath string
+	Build    BuildInfo
+}
+
+// Server serves the sinks, the JSON API and the HTML view.
 type Server struct {
 	store *Store
-	// token, when set, is required as "Authorization: Bearer <token>" or
-	// "?token=<token>" on every route but /healthz.
-	token string
+	opts  Options
 
 	mu     sync.Mutex
-	faults map[string]*Fault
+	faults map[string]*Fault // by "<kind>/<channel>"
 }
 
-// NewServer returns a Server on store. An empty token disables auth.
-func NewServer(store *Store, token string) *Server {
-	return &Server{store: store, token: token, faults: map[string]*Fault{}}
+// NewServer returns a Server on store.
+func NewServer(store *Store, opts Options) *Server {
+	return &Server{store: store, opts: opts, faults: map[string]*Fault{}}
 }
 
-// Handler returns the HTTP routes.
+// Handler returns the HTTP routes, mounted under Options.BasePath.
 func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	health := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ok\n")
 	})
-	mux.HandleFunc("POST /webhook/{channel}", s.auth(s.handleWebhook))
-	mux.HandleFunc("GET /api/channels", s.auth(s.handleChannels))
-	mux.HandleFunc("GET /api/messages", s.auth(s.handleList))
-	mux.HandleFunc("DELETE /api/messages", s.auth(s.handleClear))
-	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.handleGet))
-	mux.HandleFunc("GET /api/events", s.auth(s.handleEvents))
-	mux.HandleFunc("POST /api/render", s.auth(s.handleRender))
-	mux.HandleFunc("GET /api/faults", s.auth(s.handleListFaults))
-	mux.HandleFunc("PUT /api/faults/{channel}", s.auth(s.handleSetFault))
-	mux.HandleFunc("DELETE /api/faults/{channel}", s.auth(s.handleClearFault))
-	mux.HandleFunc("GET /{$}", s.auth(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(indexHTML)
-	}))
+
+	app := http.NewServeMux()
+	app.HandleFunc("POST /teams/{channel}", s.auth(s.handleTeams))
+	app.HandleFunc("POST /webhook/{channel}", s.auth(s.handleWebhook))
+	app.HandleFunc("GET /api/channels", s.auth(s.handleChannels))
+	app.HandleFunc("GET /api/messages", s.auth(s.handleList))
+	app.HandleFunc("DELETE /api/messages", s.auth(s.handleClear))
+	app.HandleFunc("GET /api/messages/{id}", s.auth(s.handleGet))
+	app.HandleFunc("GET /api/events", s.auth(s.handleEvents))
+	app.HandleFunc("POST /api/render", s.auth(s.handleRender))
+	app.HandleFunc("GET /api/faults", s.auth(s.handleListFaults))
+	app.HandleFunc("PUT /api/faults/{kind}/{channel}", s.auth(s.handleSetFault))
+	app.HandleFunc("DELETE /api/faults/{kind}/{channel}", s.auth(s.handleClearFault))
+	static, _ := fs.Sub(staticFS, "static")
+	app.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(static))))
+	app.HandleFunc("GET /{$}", s.auth(s.handleIndex))
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /health", health)
+	mux.Handle("GET /healthz", health)
+	base := s.opts.BasePath
+	if base == "" {
+		mux.Handle("/", app)
+		return mux
+	}
+	toUI := http.RedirectHandler(base+"/", http.StatusTemporaryRedirect)
+	mux.Handle(base+"/", http.StripPrefix(base, app))
+	mux.Handle(base, toUI)
+	mux.Handle("/{$}", toUI)
 	return mux
 }
 
+var basePathSegment = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
+
+// ParseBasePath normalises a BASE_PATH to "/a/b" form ("" and "/" become
+// ""), as homerun2-core-catcher does. Only plain path segments are accepted:
+// the value is written into the page's HTML.
+func ParseBasePath(s string) (string, error) {
+	trimmed := strings.Trim(strings.TrimSpace(s), "/")
+	if trimmed == "" {
+		return "", nil
+	}
+	for _, seg := range strings.Split(trimmed, "/") {
+		if !basePathSegment.MatchString(seg) || seg == "." || seg == ".." {
+			return "", fmt.Errorf("invalid BASE_PATH %q: segment %q", s, seg)
+		}
+	}
+	return "/" + trimmed, nil
+}
+
+type indexData struct {
+	BasePath string
+	// PortalTheme links homerun2-portal's design tokens: the request came
+	// through the portal's proxy.
+	PortalTheme bool
+	Version     string
+	Commit      string
+	Date        string
+}
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	commit := s.opts.Build.Commit
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+	var buf bytes.Buffer
+	if err := indexTmpl.Execute(&buf, indexData{
+		BasePath:    s.opts.BasePath,
+		PortalTheme: r.Header.Get("X-Forwarded-Prefix") != "",
+		Version:     s.opts.Build.Version,
+		Commit:      commit,
+		Date:        s.opts.Build.Date,
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
+}
+
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
-	if s.token == "" {
+	token := s.opts.Token
+	if token == "" {
 		return next
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +184,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 			got = strings.TrimPrefix(h, "Bearer ")
 		}
-		if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -103,45 +192,71 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// handleWebhook accepts what a Teams Workflow webhook accepts and answers
-// 202 with an empty body, as Teams does.
+// handleTeams accepts what a Teams Workflow webhook accepts and answers 202
+// with an empty body, as Teams does.
+func (s *Server) handleTeams(w http.ResponseWriter, r *http.Request) {
+	channel := r.PathValue("channel")
+	raw, ok := s.receive(w, r, KindTeams, channel)
+	if !ok {
+		return
+	}
+	env, err := ParseEnvelope(raw)
+	if err != nil {
+		slog.Warn("sink rejected post", "kind", KindTeams, "channel", channel, "error", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	m := s.store.AddTeams(channel, env, raw)
+	slog.Info("sink received", "kind", KindTeams, "channel", channel, "id", m.ID, "title", m.Title)
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// handleWebhook accepts any JSON body, as the catcher's generic webhook
+// output sends it, and answers 200.
 func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	channel := r.PathValue("channel")
+	raw, ok := s.receive(w, r, KindWebhook, channel)
+	if !ok {
+		return
+	}
+	if !json.Valid(raw) {
+		slog.Warn("sink rejected post", "kind", KindWebhook, "channel", channel, "error", "invalid JSON")
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	m := s.store.AddWebhook(channel, raw)
+	slog.Info("sink received", "kind", KindWebhook, "channel", channel, "id", m.ID, "title", m.Title)
+	w.WriteHeader(http.StatusOK)
+}
 
-	if f := s.takeFault(channel); f != nil {
+// receive applies the channel's fault and reads the body. It writes the
+// response itself and returns false when the post ends there.
+func (s *Server) receive(w http.ResponseWriter, r *http.Request, kind, channel string) ([]byte, bool) {
+	if f := s.takeFault(kind + "/" + channel); f != nil {
 		if f.Delay > 0 {
 			select {
 			case <-time.After(f.Delay):
 			case <-r.Context().Done():
-				return
+				return nil, false
 			}
 		}
 		if f.Status != 0 {
-			slog.Info("teams-mock fault injected", "channel", channel, "status", f.Status, "delay", f.Delay)
+			slog.Info("sink fault injected", "kind", kind, "channel", channel, "status", f.Status, "delay", f.Delay)
 			http.Error(w, http.StatusText(f.Status), f.Status)
-			return
+			return nil, false
 		}
 	}
 
 	raw, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
 	if err != nil {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
-		return
+		return nil, false
 	}
 	if len(raw) > maxBodyBytes {
 		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
-		return
+		return nil, false
 	}
-	env, err := ParseEnvelope(raw)
-	if err != nil {
-		slog.Warn("teams-mock rejected post", "channel", channel, "error", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	m := s.store.Add(channel, env, raw)
-	slog.Info("teams-mock card received", "channel", channel, "id", m.ID, "title", m.Title)
-	w.WriteHeader(http.StatusAccepted)
+	return raw, true
 }
 
 // ParseEnvelope decodes and checks a webhook body: a message with at least
@@ -174,6 +289,7 @@ func (s *Server) handleChannels(w http.ResponseWriter, _ *http.Request) {
 
 // handleList serves GET /api/messages. Query parameters:
 //
+//	kind      only this sink kind (msteams, webhook)
 //	channel   only this channel
 //	since     RFC3339 time; only posts received after it
 //	after     sequence number; only posts with a higher seq (poll cursor)
@@ -183,7 +299,7 @@ func (s *Server) handleChannels(w http.ResponseWriter, _ *http.Request) {
 //	limit     at most this many, newest first
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	v := r.URL.Query()
-	q := Query{Channel: v.Get("channel"), Contains: v.Get("q")}
+	q := Query{Kind: v.Get("kind"), Channel: v.Get("channel"), Contains: v.Get("q")}
 	if id := v.Get("objectId"); id != "" {
 		if q.Contains != "" {
 			http.Error(w, "use either objectId or q", http.StatusBadRequest)
@@ -241,7 +357,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleClear(w http.ResponseWriter, r *http.Request) {
-	s.store.Clear(r.URL.Query().Get("channel"))
+	s.store.Clear(r.URL.Query().Get("kind"), r.URL.Query().Get("channel"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -344,6 +460,10 @@ func (s *Server) handleListFaults(w http.ResponseWriter, _ *http.Request) {
 
 // handleSetFault sets a channel's fault from {"status":500,"delay":"2s","count":3}.
 func (s *Server) handleSetFault(w http.ResponseWriter, r *http.Request) {
+	key, ok := faultKey(w, r)
+	if !ok {
+		return
+	}
 	var fj faultJSON
 	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&fj); err != nil {
 		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
@@ -371,24 +491,37 @@ func (s *Server) handleSetFault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	s.faults[r.PathValue("channel")] = f
+	s.faults[key] = f
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleClearFault(w http.ResponseWriter, r *http.Request) {
+	key, ok := faultKey(w, r)
+	if !ok {
+		return
+	}
 	s.mu.Lock()
-	delete(s.faults, r.PathValue("channel"))
+	delete(s.faults, key)
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func faultKey(w http.ResponseWriter, r *http.Request) (string, bool) {
+	kind := r.PathValue("kind")
+	if kind != KindTeams && kind != KindWebhook {
+		http.Error(w, "kind must be msteams or webhook", http.StatusBadRequest)
+		return "", false
+	}
+	return kind + "/" + r.PathValue("channel"), true
+}
+
 // takeFault returns the channel's fault for one post, counting it down and
 // dropping it when used up.
-func (s *Server) takeFault(channel string) *Fault {
+func (s *Server) takeFault(key string) *Fault {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	f, ok := s.faults[channel]
+	f, ok := s.faults[key]
 	if !ok {
 		return nil
 	}
@@ -396,7 +529,7 @@ func (s *Server) takeFault(channel string) *Fault {
 	if f.Count > 0 {
 		f.Count--
 		if f.Count == 0 {
-			delete(s.faults, channel)
+			delete(s.faults, key)
 		}
 	}
 	return &used

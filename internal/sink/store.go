@@ -1,9 +1,10 @@
-// Package teamsmock is a Teams-shaped webhook sink for dev, e2e and card
-// design (#52). It accepts what a Teams Workflow webhook accepts (a
-// TeamsEnvelope holding one Adaptive Card), keeps the last N posts per
-// channel in memory, and serves them as JSON and as an HTML view with the
-// cards rendered.
-package teamsmock
+// Package sink is a notification sink for dev, e2e and card design
+// (#52). It takes what the catcher's outputs send -- Teams-shaped posts (a
+// TeamsEnvelope holding Adaptive Cards) and generic webhook JSON -- keeps the
+// last N posts per channel in memory, and serves them as JSON and as an HTML
+// view: one list of everything that arrived, each post shown the way its
+// target would show it.
+package sink
 
 import (
 	"encoding/json"
@@ -13,24 +14,37 @@ import (
 	"sync"
 	"time"
 
+	homerun "github.com/stuttgart-things/homerun-library/v4"
+
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
+)
+
+// Sink kinds, named after the catcher's output types.
+const (
+	KindTeams   = "msteams"
+	KindWebhook = "webhook"
 )
 
 // DefaultCapacity is how many posts a channel keeps before the oldest drops.
 const DefaultCapacity = 500
 
-// Message is one post the mock received.
+// Message is one post the sink received.
 type Message struct {
-	ID         string               `json:"id"`
-	Seq        uint64               `json:"seq"`
-	Channel    string               `json:"channel"`
-	ReceivedAt time.Time            `json:"receivedAt"`
-	Envelope   models.TeamsEnvelope `json:"envelope"`
+	ID         string    `json:"id"`
+	Seq        uint64    `json:"seq"`
+	Kind       string    `json:"kind"`
+	Channel    string    `json:"channel"`
+	ReceivedAt time.Time `json:"receivedAt"`
+	// Envelope is set for KindTeams posts.
+	Envelope *models.TeamsEnvelope `json:"envelope,omitempty"`
 	// Raw is the request body as posted, so a test can assert on fields the
 	// typed envelope does not model.
 	Raw json.RawMessage `json:"raw"`
-	// Summary fields pulled from the card for the list view and filters.
+	// Summary fields pulled from the card or the webhook JSON, for the list
+	// view and filters.
 	Title        string            `json:"title"`
+	Severity     string            `json:"severity,omitempty"`
+	System       string            `json:"system,omitempty"`
 	FallbackText string            `json:"fallbackText,omitempty"`
 	Style        string            `json:"style,omitempty"`
 	Facts        map[string]string `json:"facts,omitempty"`
@@ -38,6 +52,7 @@ type Message struct {
 
 // Query narrows List. Zero values match everything.
 type Query struct {
+	Kind    string
 	Channel string
 	// Since keeps messages received after this time.
 	Since time.Time
@@ -75,22 +90,37 @@ func NewStore(capacity int) *Store {
 	}
 }
 
-// Add stores one post and notifies subscribers. It assigns ID, Seq and
-// ReceivedAt and fills the summary fields from the envelope.
-func (s *Store) Add(channel string, env models.TeamsEnvelope, raw []byte) *Message {
+// AddTeams stores a Teams post; see add.
+func (s *Store) AddTeams(channel string, env models.TeamsEnvelope, raw []byte) *Message {
+	m := &Message{Kind: KindTeams, Channel: channel, Envelope: &env}
+	summarizeCard(m)
+	return s.add(m, raw)
+}
+
+// AddWebhook stores a generic webhook post. A body that decodes as a
+// homerun.Message (what the catcher's webhook output sends) fills the
+// summary fields; any other JSON is kept as is.
+func (s *Store) AddWebhook(channel string, raw []byte) *Message {
+	m := &Message{Kind: KindWebhook, Channel: channel}
+	var msg homerun.Message
+	if json.Unmarshal(raw, &msg) == nil {
+		summarizeMessage(m, msg)
+	}
+	return s.add(m, raw)
+}
+
+// add assigns ID, Seq and ReceivedAt, stores m and notifies subscribers.
+// Channels are per kind: a Teams and a webhook channel may share a name.
+func (s *Store) add(m *Message, raw []byte) *Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.seq++
-	m := &Message{
-		ID:         strconv.FormatUint(s.seq, 10),
-		Seq:        s.seq,
-		Channel:    channel,
-		ReceivedAt: time.Now().UTC(),
-		Envelope:   env,
-		Raw:        append(json.RawMessage(nil), raw...),
-	}
-	summarize(m)
+	m.ID = strconv.FormatUint(s.seq, 10)
+	m.Seq = s.seq
+	m.ReceivedAt = time.Now().UTC()
+	m.Raw = append(json.RawMessage(nil), raw...)
+	channel := m.Kind + "/" + m.Channel
 
 	list := append(s.channels[channel], m)
 	if len(list) > s.capacity {
@@ -128,11 +158,11 @@ func (s *Store) List(q Query) []*Message {
 
 	contains := strings.ToLower(q.Contains)
 	out := []*Message{}
-	for channel, list := range s.channels {
-		if q.Channel != "" && channel != q.Channel {
-			continue
-		}
+	for _, list := range s.channels {
 		for _, m := range list {
+			if (q.Kind != "" && m.Kind != q.Kind) || (q.Channel != "" && m.Channel != q.Channel) {
+				break // a list holds one kind and channel
+			}
 			if m.Seq <= q.AfterSeq || (!q.Since.IsZero() && !m.ReceivedAt.After(q.Since)) {
 				continue
 			}
@@ -152,7 +182,7 @@ func (s *Store) List(q Query) []*Message {
 	return out
 }
 
-// Channels returns the channel names with their post counts.
+// Channels returns the post counts per "<kind>/<channel>".
 func (s *Store) Channels() map[string]int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,15 +193,16 @@ func (s *Store) Channels() map[string]int {
 	return out
 }
 
-// Clear drops all posts of channel, or of every channel when channel is "".
-func (s *Store) Clear(channel string) {
+// Clear drops the posts matching kind and channel; empty matches all.
+func (s *Store) Clear(kind, channel string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if channel == "" {
-		s.channels = map[string][]*Message{}
-		return
+	for key := range s.channels {
+		k, c, _ := strings.Cut(key, "/")
+		if (kind == "" || k == kind) && (channel == "" || c == channel) {
+			delete(s.channels, key)
+		}
 	}
-	delete(s.channels, channel)
 }
 
 // Subscribe returns a channel receiving every new post until cancel is called.
@@ -203,9 +234,32 @@ func hasFacts(m *Message, want map[string]string) bool {
 	return true
 }
 
-// summarize fills Title, FallbackText, Style and Facts from the first card.
-// The title is the first TextBlock found, as in the catcher's own card.
-func summarize(m *Message) {
+// summarizeMessage fills the summary fields of a webhook post from the
+// homerun.Message it carries.
+func summarizeMessage(m *Message, msg homerun.Message) {
+	m.Title = msg.Title
+	m.Severity = msg.Severity
+	m.System = msg.System
+	add := func(title, value string) {
+		if v := strings.TrimSpace(value); v != "" {
+			if m.Facts == nil {
+				m.Facts = map[string]string{}
+			}
+			m.Facts[title] = v
+		}
+	}
+	add("Severity", msg.Severity)
+	add("System", msg.System)
+	add("Author", msg.Author)
+	add("Tags", msg.Tags)
+	add("Time", msg.Timestamp)
+}
+
+// summarizeCard fills Title, FallbackText, Style and Facts from the first
+// card. The title is the first TextBlock found, as in the catcher's own
+// card. Severity and System come from the facts, else severity from the
+// "[severity] " prefix of the fallback text.
+func summarizeCard(m *Message) {
 	if len(m.Envelope.Attachments) == 0 {
 		return
 	}
@@ -230,4 +284,21 @@ func summarize(m *Message) {
 		}
 	}
 	walk(card.Body)
+
+	m.Severity = factValue(m.Facts, "Severity")
+	m.System = factValue(m.Facts, "System")
+	if m.Severity == "" && strings.HasPrefix(m.FallbackText, "[") {
+		if sev, _, ok := strings.Cut(m.FallbackText[1:], "] "); ok {
+			m.Severity = sev
+		}
+	}
+}
+
+func factValue(facts map[string]string, title string) string {
+	for t, v := range facts {
+		if strings.EqualFold(t, title) {
+			return v
+		}
+	}
+	return ""
 }
