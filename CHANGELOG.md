@@ -1,3 +1,10 @@
+# [3.7.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.6.0...v3.7.0) (2026-10-21)
+
+
+### Features
+
+* **notify:** carry the objectId into the Teams card and webhook payload ([06d3d98](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/06d3d9887cbfa0e48b933fb9ba69c4efe76c42f0)), closes [#64](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/64) [#49](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/49) [#55](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/55)
+
 # [3.6.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.5.0...v3.6.0) (2026-10-21)
 
 
