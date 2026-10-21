@@ -1,3 +1,12 @@
+# [3.2.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.1.0...v3.2.0) (2026-10-21)
+
+
+### Features
+
+* generic notification sink in the homerun2-core-catcher design ([0841006](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/0841006631169bb9a79cc7d96fc713728bce91e0)), closes [#52](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/52)
+* **sink:** notification list with channels column, tabs per system ([78fe743](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/78fe7432043fa0ed882e02d79e32a3bfe395447f)), closes [#52](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/52)
+* teams-mock subcommand, a Teams-shaped webhook sink with HTML card view and test API ([1497fdf](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/1497fdff19113d2c41bb348d80ffcf9aac94f461)), closes [#52](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/52)
+
 # [3.1.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.0.3...v3.1.0) (2026-10-18)
 
 
