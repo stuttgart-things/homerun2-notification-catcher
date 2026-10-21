@@ -114,6 +114,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
 - `internal/notify/dispatcher.go` — fan-out across configured outputs
+- `internal/teamsmock/` — `notification-catcher teams-mock`: Teams-shaped webhook sink (in-memory store, JSON API, HTML view with card playground, fault injection); see `docs/teams-mock.md`
 - `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
 - `dagger/main.go` — CI functions (Lint, Build, BuildImage, ScanImage, BuildAndTestBinary, IntegrationTest)
@@ -159,6 +160,14 @@ Add `--dry-run` (or set `DRY_RUN=true`) to test routing without firing any webho
 
 ```bash
 notification-catcher smoke --config notify.yaml --severity warning --dry-run
+```
+
+## Teams mock (CLI)
+
+A Teams-shaped webhook sink for card design and e2e assertions (#52). Point an `msteams` output at `http://<mock>/webhook/<channel>`; cards show at `/` and in `GET /api/messages?channel=&objectId=&fact=Title=Value`.
+
+```bash
+notification-catcher teams-mock --addr :8080   # TEAMS_MOCK_TOKEN optional
 ```
 
 ## Testing

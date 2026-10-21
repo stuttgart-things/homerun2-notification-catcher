@@ -6,6 +6,7 @@ nav:
   - Configuration: configuration.md
   - Deployment: deployment.md
   - Alertmanager integration: alertmanager.md
+  - Teams mock: teams-mock.md
   - Preview Environments: preview-environments.md
   - CI/CD: cicd.md
 

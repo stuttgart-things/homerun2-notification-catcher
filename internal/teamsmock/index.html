@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teams Mock</title>
+<script src="https://unpkg.com/adaptivecards@3.0.4/dist/adaptivecards.min.js"></script>
+<style>
+:root {
+  --bg: #f5f5f5; --panel: #ffffff; --fg: #242424; --muted: #616161; --border: #e0e0e0;
+  --accent: #5b5fc7; --code: #fafafa;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1f1f1f; --panel: #292929; --fg: #ffffff; --muted: #adadad; --border: #3d3d3d;
+    --accent: #7f85f5; --code: #1b1b1b;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1f1f1f; --panel: #292929; --fg: #ffffff; --muted: #adadad; --border: #3d3d3d;
+  --accent: #7f85f5; --code: #1b1b1b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; }
+header h1 { font-size: 16px; margin: 0 12px 0 0; }
+header .grow { flex: 1; }
+input, select, button, textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
+button { cursor: pointer; }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+#status { color: var(--muted); font-size: 12px; }
+main { display: flex; gap: 12px; padding: 12px 16px; overflow-x: auto; align-items: flex-start; }
+.column { flex: 0 0 380px; max-width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.column h2 { font-size: 14px; margin: 0; display: flex; justify-content: space-between; }
+.column h2 span { color: var(--muted); font-weight: normal; }
+.post { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.post .meta { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.post .preview { padding: 6px 10px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); word-break: break-word; }
+.post .card { padding: 0; }
+.post pre { margin: 0; padding: 10px; background: var(--code); font-size: 12px; overflow-x: auto; max-height: 400px; }
+.empty { color: var(--muted); padding: 24px 16px; }
+#playground { display: none; padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
+#playground.open { display: flex; }
+#playground > div { flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px; }
+#playground textarea { min-height: 160px; font-family: ui-monospace, monospace; font-size: 12px; }
+#pg-error { color: #c4314b; white-space: pre-wrap; }
+.fallback-card { padding: 12px; border-left: 4px solid var(--border); }
+.fallback-card.attention { border-left-color: #c4314b; }
+.fallback-card.warning { border-left-color: #f8d22a; }
+.fallback-card.good { border-left-color: #237b4b; }
+.fallback-card a { display: inline-block; margin-top: 8px; color: var(--accent); }
+.fallback-card .t { font-size: 18px; font-weight: 600; }
+.fallback-card table { margin-top: 8px; border-collapse: collapse; }
+.fallback-card td { padding: 2px 12px 2px 0; vertical-align: top; }
+.fallback-card td:first-child { font-weight: 600; }
+@media (max-width: 600px) { .column { flex-basis: 100%; } main { flex-direction: column; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Teams Mock</h1>
+  <input id="filter" placeholder="filter: text, system, tag…" size="24">
+  <select id="severity">
+    <option value="">all severities</option>
+    <option value="attention">critical / error</option>
+    <option value="warning">warning</option>
+    <option value="good">success</option>
+    <option value="default">info / other</option>
+  </select>
+  <button id="raw-toggle" type="button">raw JSON</button>
+  <button id="pg-toggle" type="button">playground</button>
+  <button id="theme-toggle" type="button">theme</button>
+  <span class="grow"></span>
+  <span id="status">connecting…</span>
+</header>
+
+<section id="playground">
+  <div>
+    <label for="pg-message">homerun.Message (JSON)</label>
+    <textarea id="pg-message">{
+  "title": "disk almost full",
+  "message": "/var is at 91% on node-3",
+  "severity": "warning",
+  "system": "kubernetes",
+  "author": "omni-pitcher",
+  "tags": "infra,storage,cluster=labda",
+  "url": "https://grafana.example/d/disk"
+}</textarea>
+    <label for="pg-card">card config (YAML under an output's <code>card:</code>, empty = default card)</label>
+    <textarea id="pg-card" placeholder="facts:&#10;  - title: Cluster&#10;    tag: cluster&#10;  - title: System&#10;    field: system"></textarea>
+    <div><button id="pg-render" type="button">render</button></div>
+    <div id="pg-error"></div>
+  </div>
+  <div>
+    <div>Preview (built by the catcher's <code>BuildEnvelopeWithCard</code>)</div>
+    <div id="pg-out" class="post"></div>
+  </div>
+</section>
+
+<main id="columns"><div class="empty">No cards yet. Point a <code>msteams</code> output at <code>/webhook/&lt;channel&gt;</code>.</div></main>
+
+<script>
+(function () {
+  "use strict";
+  const token = new URLSearchParams(location.search).get("token");
+  const withToken = (url) => token ? url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : url;
+
+  const state = { posts: [], raw: false };
+  const $ = (id) => document.getElementById(id);
+
+  // --- theme -------------------------------------------------------------
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  function isDark() {
+    const t = document.documentElement.dataset.theme;
+    return t ? t === "dark" : darkQuery.matches;
+  }
+  try { const t = localStorage.getItem("teams-mock-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  $("theme-toggle").onclick = () => {
+    const next = isDark() ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("teams-mock-theme", next); } catch (e) {}
+    render(); renderPlayground();
+  };
+  darkQuery.addEventListener("change", () => { render(); renderPlayground(); });
+
+  // --- Adaptive Card rendering -------------------------------------------
+  // Host config approximating Teams' light and dark themes.
+  function hostConfig(dark) {
+    const fg = (d, l) => ({ default: d, subtle: l });
+    const fgSet = dark ? {
+      default: fg("#FFFFFF", "#ADADAD"), dark: fg("#000000", "#333333"), light: fg("#FFFFFF", "#ADADAD"),
+      accent: fg("#7F85F5", "#AAB0FA"), good: fg("#92C353", "#A8D07A"), warning: fg("#F8D22A", "#FADF6A"),
+      attention: fg("#E5737F", "#EE969F")
+    } : {
+      default: fg("#242424", "#616161"), dark: fg("#000000", "#333333"), light: fg("#FFFFFF", "#F0F0F0"),
+      accent: fg("#5B5FC7", "#7F85F5"), good: fg("#237B4B", "#4E9A6A"), warning: fg("#835B00", "#A87A1A"),
+      attention: fg("#C4314B", "#D45A6E")
+    };
+    const bg = dark
+      ? { default: "#292929", emphasis: "#1F1F1F", good: "#0D2E0D", attention: "#3E1F25", warning: "#463100", accent: "#2F2F4A" }
+      : { default: "#FFFFFF", emphasis: "#F5F5F5", good: "#E7F2DA", attention: "#FCF4F6", warning: "#FBF6D9", accent: "#E8EBFA" };
+    const containerStyles = {};
+    for (const k of Object.keys(bg)) containerStyles[k] = { backgroundColor: bg[k], foregroundColors: fgSet };
+    return {
+      fontFamily: "Segoe UI, system-ui, sans-serif",
+      supportsInteractivity: true,
+      spacing: { small: 4, default: 8, medium: 12, large: 16, extraLarge: 24, padding: 12 },
+      fontSizes: { small: 12, default: 14, medium: 14, large: 18, extraLarge: 24 },
+      fontWeights: { lighter: 300, default: 400, bolder: 600 },
+      containerStyles: containerStyles,
+      factSet: { title: { weight: "bolder", wrap: true, maxWidth: 150 }, value: { wrap: true }, spacing: 8 },
+      actions: { maxActions: 6, buttonSpacing: 8, showCard: { actionMode: "inline" }, actionsOrientation: "horizontal", actionAlignment: "left" }
+    };
+  }
+
+  function renderCard(content) {
+    if (window.AdaptiveCards) {
+      try {
+        const card = new AdaptiveCards.AdaptiveCard();
+        card.hostConfig = new AdaptiveCards.HostConfig(hostConfig(isDark()));
+        card.onExecuteAction = (a) => { if (a.url) window.open(a.url, "_blank", "noopener"); };
+        card.parse(content);
+        const el = card.render();
+        if (el) return el;
+      } catch (e) {
+        console.warn("adaptivecards render failed", e);
+      }
+    }
+    return fallbackCard(content);
+  }
+
+  // Minimal renderer for when the adaptivecards script cannot load
+  // (offline cluster): title, text blocks, facts.
+  function fallbackCard(content) {
+    const box = document.createElement("div");
+    box.className = "fallback-card";
+    let first = true;
+    const walk = (items) => (items || []).forEach((e) => {
+      if (e.type === "Container" && e.style && box.classList.length === 1) box.classList.add(e.style);
+      if (e.type === "TextBlock") {
+        const d = document.createElement("div");
+        if (first) { d.className = "t"; first = false; }
+        d.textContent = e.text || "";
+        box.appendChild(d);
+      } else if (e.type === "FactSet") {
+        const t = document.createElement("table");
+        (e.facts || []).forEach((f) => {
+          const tr = t.insertRow();
+          tr.insertCell().textContent = f.title;
+          tr.insertCell().textContent = f.value;
+        });
+        box.appendChild(t);
+      }
+      walk(e.items);
+    });
+    walk(content && content.body);
+    ((content && content.actions) || []).forEach((a) => {
+      if (a.type !== "Action.OpenUrl" || !/^https?:/i.test(a.url || "")) return;
+      const l = document.createElement("a");
+      l.href = a.url; l.target = "_blank"; l.rel = "noopener";
+      l.textContent = a.title || a.url;
+      box.appendChild(l);
+    });
+    return box;
+  }
+
+  function postElement(p) {
+    const el = document.createElement("div");
+    el.className = "post";
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const left = document.createElement("span");
+    left.textContent = "#" + p.id + " · " + new Date(p.receivedAt).toLocaleString();
+    const link = document.createElement("a");
+    link.href = withToken("/api/messages/" + encodeURIComponent(p.id));
+    link.textContent = "envelope";
+    link.target = "_blank";
+    meta.append(left);
+    if (p.id !== "preview") meta.append(link);
+    el.appendChild(meta);
+
+    const atts = (p.envelope && p.envelope.attachments) || [];
+    if (state.raw) {
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(p.raw, null, 2);
+      el.appendChild(pre);
+    } else {
+      atts.forEach((a) => {
+        const c = document.createElement("div");
+        c.className = "card";
+        c.appendChild(renderCard(a.content));
+        el.appendChild(c);
+      });
+    }
+    const preview = document.createElement("div");
+    preview.className = "preview";
+    preview.textContent = "preview: " + (p.fallbackText || "(no fallbackText, Teams shows \"Card - access it on…\")");
+    el.appendChild(preview);
+    return el;
+  }
+
+  function matches(p) {
+    const sev = $("severity").value;
+    if (sev && (p.style || "default") !== sev) return false;
+    const q = $("filter").value.trim().toLowerCase();
+    if (!q) return true;
+    const hay = [p.title, p.fallbackText, p.channel]
+      .concat(Object.entries(p.facts || {}).map(([k, v]) => k + "=" + v)).join("\n").toLowerCase();
+    return hay.includes(q);
+  }
+
+  function render() {
+    const root = $("columns");
+    const byChannel = new Map();
+    state.posts.forEach((p) => {
+      if (!byChannel.has(p.channel)) byChannel.set(p.channel, []);
+      byChannel.get(p.channel).push(p);
+    });
+    root.replaceChildren();
+    if (byChannel.size === 0) {
+      const e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = "No cards yet. Point a msteams output at /webhook/<channel>.";
+      root.appendChild(e);
+      return;
+    }
+    [...byChannel.keys()].sort().forEach((ch) => {
+      const all = byChannel.get(ch);
+      const shown = all.filter(matches);
+      const col = document.createElement("section");
+      col.className = "column";
+      const h = document.createElement("h2");
+      h.textContent = ch;
+      const n = document.createElement("span");
+      n.textContent = shown.length + " / " + all.length;
+      h.appendChild(n);
+      col.appendChild(h);
+      shown.forEach((p) => col.appendChild(postElement(p)));
+      root.appendChild(col);
+    });
+  }
+
+  $("filter").oninput = render;
+  $("severity").onchange = render;
+  $("raw-toggle").onclick = () => {
+    state.raw = !state.raw;
+    $("raw-toggle").classList.toggle("on", state.raw);
+    render();
+  };
+
+  // --- data --------------------------------------------------------------
+  const MAX_POSTS = 5000;
+  function addPost(p) {
+    if (state.posts.some((x) => x.id === p.id)) return;
+    state.posts.unshift(p);
+    state.posts.sort((a, b) => b.seq - a.seq);
+    if (state.posts.length > MAX_POSTS) state.posts.length = MAX_POSTS;
+  }
+
+  async function load() {
+    const res = await fetch(withToken("/api/messages"));
+    if (!res.ok) throw new Error("GET /api/messages: " + res.status);
+    (await res.json()).forEach(addPost);
+    render();
+  }
+
+  function connect() {
+    const es = new EventSource(withToken("/api/events"));
+    es.onopen = () => { $("status").textContent = "live"; };
+    es.onerror = () => { $("status").textContent = "reconnecting…"; };
+    es.addEventListener("message", (ev) => { addPost(JSON.parse(ev.data)); render(); });
+  }
+
+  load().then(connect).catch((e) => { $("status").textContent = String(e); });
+
+  // --- playground --------------------------------------------------------
+  let lastEnvelope = null;
+  $("pg-toggle").onclick = () => {
+    const open = $("playground").classList.toggle("open");
+    $("pg-toggle").classList.toggle("on", open);
+  };
+  function renderPlayground() {
+    const out = $("pg-out");
+    out.replaceChildren();
+    if (!lastEnvelope) return;
+    const p = { id: "preview", receivedAt: new Date().toISOString(), envelope: lastEnvelope, raw: lastEnvelope,
+      fallbackText: lastEnvelope.attachments[0].content.fallbackText };
+    out.replaceWith(Object.assign(postElement(p), { id: "pg-out" }));
+  }
+  $("pg-render").onclick = async () => {
+    $("pg-error").textContent = "";
+    let message;
+    try { message = JSON.parse($("pg-message").value); } catch (e) { $("pg-error").textContent = "message: " + e.message; return; }
+    const res = await fetch(withToken("/api/render"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message, card: $("pg-card").value })
+    });
+    if (!res.ok) { $("pg-error").textContent = await res.text(); return; }
+    lastEnvelope = await res.json();
+    renderPlayground();
+  };
+})();
+</script>
+</body>
+</html>

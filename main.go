@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -16,6 +18,7 @@ import (
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/teamsmock"
 
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 )
@@ -36,6 +39,13 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "smoke" {
 		if err := runSmoke(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "smoke:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "teams-mock" {
+		if err := runTeamsMock(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "teams-mock:", err)
 			os.Exit(1)
 		}
 		return
@@ -232,6 +242,56 @@ func printSmokeResults(results []notify.DispatchResult) error {
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d output(s) failed", failed)
+	}
+	return nil
+}
+
+// runTeamsMock serves a Teams-shaped webhook sink (#52): point a msteams
+// output at http://<mock>/webhook/<channel> and the cards show up in the
+// HTML view at / and in GET /api/messages for tests. No Redis needed.
+//
+//	notification-catcher teams-mock --addr :8080 --capacity 500
+//
+// TEAMS_MOCK_TOKEN, when set, is required on every route but /healthz, as
+// "Authorization: Bearer <token>" or "?token=<token>".
+func runTeamsMock(args []string) error {
+	fs := flag.NewFlagSet("teams-mock", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var (
+		addr     = fs.String("addr", homerun.GetEnv("TEAMS_MOCK_ADDR", ":8080"), "listen address")
+		capacity = fs.Int("capacity", teamsmock.DefaultCapacity, "posts kept per channel (oldest drop first)")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	config.SetupLogging()
+	token := os.Getenv("TEAMS_MOCK_TOKEN")
+
+	srv := &http.Server{
+		Addr:              *addr,
+		Handler:           teamsmock.NewServer(teamsmock.NewStore(*capacity), token).Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
+	slog.Info("teams-mock listening",
+		"addr", *addr,
+		"capacity", *capacity,
+		"auth", token != "",
+		"version", version,
+	)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
 	}
 	return nil
 }
