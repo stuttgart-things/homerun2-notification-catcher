@@ -1,3 +1,10 @@
+## [3.3.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.3.0...v3.3.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/alicebob/miniredis/v2 to v2.40.0 ([044eef3](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/044eef317529ee996b07864bed9314ccaf009a87))
+
 # [3.3.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.2.1...v3.3.0) (2026-10-21)
 
 
