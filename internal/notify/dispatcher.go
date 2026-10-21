@@ -87,8 +87,10 @@ type DispatcherEntry struct {
 // are logged but do not abort the rest. The returned slice mirrors the output
 // order so callers can map results back to config entries.
 //
-// When Dispatcher.DryRun is true, matching outputs skip the Notifier.Send call
-// and log at INFO instead. Skipped outputs (filters didn't match) are reported
+// Every delivery is logged at INFO ("notifier sent", with the output's name),
+// so `kubectl logs` shows whether a message reached e.g. Teams without
+// looking at the channel. When Dispatcher.DryRun is true, matching outputs
+// skip the Notifier.Send call and log "dry-run: would send" at INFO instead. Skipped outputs (filters didn't match) are reported
 // the same way in both modes.
 func (d *Dispatcher) Dispatch(ctx context.Context, msg homerun.Message) []DispatchResult {
 	results := make([]DispatchResult, 0, len(d.outputs))
@@ -111,7 +113,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg homerun.Message) []Dispat
 		if err != nil {
 			slog.Error("notifier failed", "output", o.name, "title", msg.Title, "error", err)
 		} else {
-			slog.Debug("notifier sent", "output", o.name, "title", msg.Title)
+			slog.Info("notifier sent",
+				"output", o.name,
+				"title", msg.Title,
+				"severity", msg.Severity,
+				"system", msg.System,
+			)
 		}
 		results = append(results, DispatchResult{Output: o.name, Err: err})
 	}
