@@ -1,3 +1,11 @@
+## [3.2.1](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.2.0...v3.2.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** build with Go 1.26.9, required by homerun-library v4.5.2 ([8028184](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/8028184dea18781a0ea48affbc4d5afeac814f5e))
+* **deps:** update module github.com/stuttgart-things/homerun-library/v4 to v4.5.2 ([5238a97](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/5238a97142980074be23cd089fed61e7e057168f))
+
 # [3.2.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.1.0...v3.2.0) (2026-10-21)
 
 
