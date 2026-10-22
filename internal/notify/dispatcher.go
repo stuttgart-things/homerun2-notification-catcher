@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
@@ -27,6 +28,12 @@ type Dispatcher struct {
 	// of each output -- the HTTP UI's event log and metrics (#22, #49).
 	// Called synchronously at the end of Dispatch; keep it cheap.
 	OnDispatch func(Record)
+	// DeadLetter, when set, gets each send that still fails after its
+	// retries (#68). Nil: the failure is only logged.
+	DeadLetter DeadLetter
+
+	stop     chan struct{}
+	stopOnce sync.Once
 }
 
 // Results of one output for one message, as logged and counted.
@@ -51,6 +58,7 @@ type boundOutput struct {
 	name     string
 	filters  config.OutputFilters
 	notifier Notifier
+	retry    config.RetryPolicy
 }
 
 // DispatchResult records what happened for one output for one message. Used by
@@ -60,6 +68,12 @@ type DispatchResult struct {
 	Skipped bool  // filters didn't match
 	DryRun  bool  // filters matched but Send was skipped (Dispatcher.DryRun=true)
 	Err     error // nil on success/skipped/dry-run, non-nil if Send failed
+	// Attempts counts the sends, retries included; 0 when filtered or dry-run.
+	Attempts int
+	// DeadLettered: the failed send was parked in the dead letter.
+	DeadLettered bool
+	// ParkErr: the failed send could not be parked either (#68).
+	ParkErr error
 }
 
 // Result names r: sent, failed, filtered or dry-run.
@@ -92,9 +106,10 @@ func NewDispatcher(cfg *config.NotifyConfig, httpClient *http.Client) (*Dispatch
 			name:     oc.Name,
 			filters:  oc.Filters,
 			notifier: n,
+			retry:    cfg.RetryFor(oc),
 		})
 	}
-	return &Dispatcher{outputs: outputs}, nil
+	return &Dispatcher{outputs: outputs, stop: make(chan struct{})}, nil
 }
 
 // NewDispatcherWithNotifiers is a test-friendly constructor that skips
@@ -107,9 +122,10 @@ func NewDispatcherWithNotifiers(entries ...DispatcherEntry) *Dispatcher {
 			name:     e.Name,
 			filters:  e.Filters,
 			notifier: e.Notifier,
+			retry:    e.Retry,
 		})
 	}
-	return &Dispatcher{outputs: outputs}
+	return &Dispatcher{outputs: outputs, stop: make(chan struct{})}
 }
 
 // DispatcherEntry is the unit accepted by NewDispatcherWithNotifiers.
@@ -117,24 +133,32 @@ type DispatcherEntry struct {
 	Name     string
 	Filters  config.OutputFilters
 	Notifier Notifier
+	Retry    config.RetryPolicy // zero: one attempt, no retry
 }
 
 // Dispatch sends msg to every output whose filters match. The call is
-// synchronous: each Notifier.Send is invoked in order, and per-output failures
-// are logged but do not abort the rest. The returned slice mirrors the output
-// order so callers can map results back to config entries.
+// synchronous: it returns when every output is done. Matching outputs run in
+// parallel (#68), so one that retries through an outage does not eat the
+// others' share of ctx; messages still go out one at a time, so each channel
+// gets them in stream order. Per-output failures are logged but do not abort
+// the rest. The returned slice mirrors the output order so callers can map
+// results back to config entries.
 //
-// Every delivery is logged at INFO ("notifier sent", with the output's name
-// and the message's objectId),
-// so `kubectl logs` shows whether a message reached e.g. Teams without
-// looking at the channel. When Dispatcher.DryRun is true, matching outputs
-// skip the Notifier.Send call and log "dry-run: would send" at INFO instead. Skipped outputs (filters didn't match) are reported
-// the same way in both modes.
+// A transient failure is retried with backoff (the output's retry policy);
+// a send that still fails goes to DeadLetter when one is set.
+//
+// Every delivery is logged at INFO ("notifier sent", with the output's name,
+// the message's objectId and the attempts), so `kubectl logs` shows whether a
+// message reached e.g. Teams without looking at the channel. When
+// Dispatcher.DryRun is true, matching outputs skip the Notifier.Send call and
+// log "dry-run: would send" at INFO instead. Skipped outputs (filters didn't
+// match) are reported the same way in both modes.
 func (d *Dispatcher) Dispatch(ctx context.Context, msg models.CaughtMessage) []DispatchResult {
-	results := make([]DispatchResult, 0, len(d.outputs))
-	for _, o := range d.outputs {
+	results := make([]DispatchResult, len(d.outputs))
+	var wg sync.WaitGroup
+	for i, o := range d.outputs {
 		if !Matches(o.filters, msg.Message) {
-			results = append(results, DispatchResult{Output: o.name, Skipped: true})
+			results[i] = DispatchResult{Output: o.name, Skipped: true}
 			continue
 		}
 		if d.DryRun {
@@ -145,25 +169,45 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg models.CaughtMessage) []D
 				"severity", msg.Severity,
 				"system", msg.System,
 			)
-			results = append(results, DispatchResult{Output: o.name, DryRun: true})
+			results[i] = DispatchResult{Output: o.name, DryRun: true}
 			continue
 		}
-		err := o.notifier.Send(ctx, msg)
-		if err != nil {
-			slog.Error("notifier failed", "output", o.name, "objectId", msg.ObjectID, "title", msg.Title, "error", err)
-		} else {
-			slog.Info("notifier sent",
-				"output", o.name,
-				"objectId", msg.ObjectID,
-				"title", msg.Title,
-				"severity", msg.Severity,
-				"system", msg.System,
-			)
-		}
-		results = append(results, DispatchResult{Output: o.name, Err: err})
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = d.deliver(ctx, o, msg)
+		}()
 	}
+	wg.Wait()
 	d.summarize(msg, results)
 	return results
+}
+
+// deliver sends msg to one output, with retries, and parks it on failure.
+func (d *Dispatcher) deliver(ctx context.Context, o boundOutput, msg models.CaughtMessage) DispatchResult {
+	attempts, err := d.send(ctx, o, msg)
+	res := DispatchResult{Output: o.name, Err: err, Attempts: attempts}
+	if err == nil {
+		slog.Info("notifier sent",
+			"output", o.name,
+			"objectId", msg.ObjectID,
+			"title", msg.Title,
+			"severity", msg.Severity,
+			"system", msg.System,
+			"attempts", attempts,
+		)
+		return res
+	}
+	res.DeadLettered, res.ParkErr = d.park(o, msg, attempts, err)
+	slog.Error("notifier failed",
+		"output", o.name,
+		"objectId", msg.ObjectID,
+		"title", msg.Title,
+		"attempts", attempts,
+		"dead_lettered", res.DeadLettered,
+		"error", err,
+	)
+	return res
 }
 
 // summarize logs one line per message -- "dispatched" with each output's

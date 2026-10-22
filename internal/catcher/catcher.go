@@ -3,6 +3,7 @@ package catcher
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,8 +16,11 @@ import (
 	"github.com/stuttgart-things/redisqueue"
 )
 
-// MessageHandler processes a caught message.
-type MessageHandler func(msg models.CaughtMessage)
+// MessageHandler processes a caught message. An error leaves the stream
+// entry unacked: redisqueue delivers it again once it has been pending for
+// the visibility timeout (#68). Return one only when the message would
+// otherwise be lost.
+type MessageHandler func(msg models.CaughtMessage) error
 
 // Catcher defines the interface for message consumption backends.
 type Catcher interface {
@@ -140,17 +144,20 @@ func (c *RedisCatcher) Streams() []string {
 	return c.streams
 }
 
-// Run starts the consumer. Blocks until Shutdown is called.
+// Run starts the consumer. Blocks until Shutdown is called and the message
+// in flight is handled.
 func (c *RedisCatcher) Run() {
 	c.consumer.Run()
-}
-
-// Shutdown gracefully stops the consumer and closes the Redis client.
-func (c *RedisCatcher) Shutdown() {
-	c.consumer.Shutdown()
 	if c.redisClient != nil {
 		_ = c.redisClient.Close()
 	}
+}
+
+// Shutdown stops the consumer; Run returns once the message in flight is
+// handled, and only then closes the payload client, which the handlers may
+// still use (JSON.GET, the dead-letter stream).
+func (c *RedisCatcher) Shutdown() {
+	c.consumer.Shutdown()
 }
 
 // Ping checks the Redis connection, for the HTTP health check (#22).
@@ -192,10 +199,17 @@ func (c *RedisCatcher) handleMessage(msg *redisqueue.Message) error {
 		CaughtAt: time.Now(),
 	}
 
+	var errs []error
 	for _, h := range c.handlers {
-		h(caught)
+		if err := h(caught); err != nil {
+			errs = append(errs, err)
+		}
 	}
-
+	if err := errors.Join(errs...); err != nil {
+		slog.Error("message not acked, redelivered after the visibility timeout",
+			"objectId", messageIDStr, "streamId", msg.ID, "error", err)
+		return err
+	}
 	return nil
 }
 

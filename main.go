@@ -35,7 +35,9 @@ var (
 
 // dispatchTimeout caps the whole fan-out per caught message so one slow
 // Notifier can't hold a consumer worker indefinitely. Individual HTTP calls
-// have their own (shorter) timeouts.
+// have their own (shorter) timeouts; retries (#68) stop when the next wait no
+// longer fits. Well below redisqueue's 60s visibility timeout, so an entry is
+// never reclaimed while it is still being dispatched.
 const dispatchTimeout = 30 * time.Second
 
 func main() {
@@ -92,10 +94,23 @@ func runServer() error {
 		"dry_run", dispatcher.DryRun,
 	)
 
-	dispatchHandler := func(cm models.CaughtMessage) {
+	// DEAD_LETTER_STREAM: where sends that fail after their retries are
+	// parked (#68); "off" only logs them.
+	deadLetterStream := homerun.GetEnv("DEAD_LETTER_STREAM", catcher.DefaultDeadLetterStream)
+	if strings.EqualFold(deadLetterStream, "off") {
+		deadLetterStream = ""
+	}
+	deadLetterMaxLen := intEnv("DEAD_LETTER_MAXLEN")
+	if deadLetterMaxLen <= 0 {
+		deadLetterMaxLen = catcher.DefaultDeadLetterMaxLen
+	}
+
+	dispatchHandler := func(cm models.CaughtMessage) error {
 		ctx, cancel := context.WithTimeout(context.Background(), dispatchTimeout)
 		defer cancel()
-		dispatcher.Dispatch(ctx, cm)
+		// A failed send that could not be parked either: no ack, so the
+		// entry is delivered again.
+		return notify.Undelivered(dispatcher.Dispatch(ctx, cm))
 	}
 
 	redisConfig := config.LoadRedisConfig()
@@ -127,8 +142,9 @@ func runServer() error {
 			Streams:       streams,
 			ConsumerGroup: consumerGroup,
 			// EVENTS_CAPACITY: dispatched messages the event log keeps.
-			EventsCapacity: intEnv("EVENTS_CAPACITY"),
-			SinkURL:        os.Getenv("SINK_URL"),
+			EventsCapacity:   intEnv("EVENTS_CAPACITY"),
+			SinkURL:          os.Getenv("SINK_URL"),
+			DeadLetterStream: deadLetterStream,
 		})
 		dispatcher.OnDispatch = ui.Record
 		srv := &http.Server{Addr: addr, Handler: ui.Handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -172,12 +188,17 @@ func runServer() error {
 		ui.SetPing(c.Ping)
 	}
 
+	if deadLetterStream != "" {
+		dispatcher.DeadLetter = c.DeadLetter(deadLetterStream, int64(deadLetterMaxLen))
+	}
+
 	slog.Info("catcher configured",
 		"redis_addr", redisConfig.Addr,
 		"redis_port", redisConfig.Port,
 		"streams", streams,
 		"consumer_group", consumerGroup,
 		"consumer_start_id", consumerStartID,
+		"dead_letter_stream", deadLetterStream,
 	)
 
 	if errCh := c.Errors(); errCh != nil {
@@ -191,6 +212,7 @@ func runServer() error {
 	go func() {
 		<-ctx.Done()
 		slog.Info("shutting down catcher")
+		dispatcher.Stop()
 		c.Shutdown()
 	}()
 
@@ -274,6 +296,14 @@ func runSmoke(args []string) error {
 	return printSmokeResults(results)
 }
 
+// attemptsNote is " (3 attempts)" when a send was retried, else empty.
+func attemptsNote(n int) string {
+	if n <= 1 {
+		return ""
+	}
+	return fmt.Sprintf(" (%d attempts)", n)
+}
+
 func printSmokeResults(results []notify.DispatchResult) error {
 	if len(results) == 0 {
 		fmt.Println("no outputs configured")
@@ -288,9 +318,9 @@ func printSmokeResults(results []notify.DispatchResult) error {
 			fmt.Printf("- %s: DRY-RUN (filters matched; Send not invoked)\n", r.Output)
 		case r.Err != nil:
 			failed++
-			fmt.Printf("- %s: FAIL: %v\n", r.Output, r.Err)
+			fmt.Printf("- %s: FAIL%s: %v\n", r.Output, attemptsNote(r.Attempts), r.Err)
 		default:
-			fmt.Printf("- %s: OK\n", r.Output)
+			fmt.Printf("- %s: OK%s\n", r.Output, attemptsNote(r.Attempts))
 		}
 	}
 	if failed > 0 {

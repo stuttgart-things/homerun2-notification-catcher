@@ -54,7 +54,7 @@ func TestEventsRing(t *testing.T) {
 
 func TestMetrics(t *testing.T) {
 	e := newEvents(10, []string{"teams-platform", `pa"ger`})
-	e.record(record("1", "a", sent, notify.DispatchResult{Output: `pa"ger`, Err: errors.New("x")}))
+	e.record(record("1", "a", sent, notify.DispatchResult{Output: `pa"ger`, Err: errors.New("x"), Attempts: 3, DeadLettered: true}))
 	e.record(record("2", "b", skipped, notify.DispatchResult{Output: `pa"ger`, Skipped: true}))
 	var b strings.Builder
 	e.writeMetrics(&b)
@@ -65,6 +65,10 @@ func TestMetrics(t *testing.T) {
 		`notification_catcher_dispatch_total{output="teams-platform",result="filtered"} 1`,
 		`notification_catcher_dispatch_total{output="teams-platform",result="failed"} 0`,
 		`notification_catcher_dispatch_total{output="pa\"ger",result="failed"} 1`,
+		`notification_catcher_retries_total{output="pa\"ger"} 2`,
+		`notification_catcher_retries_total{output="teams-platform"} 0`,
+		`notification_catcher_dead_letter_total{output="pa\"ger"} 1`,
+		`notification_catcher_dead_letter_total{output="teams-platform"} 0`,
 		`notification_catcher_messages_total{routed="true"} 1`,
 		`notification_catcher_messages_total{routed="false"} 1`,
 	} {

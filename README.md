@@ -125,9 +125,10 @@ Phase 1 (#5–#9) shipped. Multi-sink routing (msteams + generic webhook),
 YAML-driven filters, env-interp for secrets, dry-run mode, KCL manifests,
 Flux component, Alertmanager wiring all in place.
 
-Phase 2 (#3 — retry/backoff, dead-letter, firing/resolved styling, dedicated
-`/pitch/alertmanager` endpoint) is next. Phase 3 (#4 — Slack / email / per-
-assignee routing) layers on top.
+Phase 2 (#3) is under way: retries with backoff and a dead-letter stream
+are in (#68, see [Configuration](docs/configuration.md#retries-and-dead-letter));
+firing/resolved styling and a dedicated `/pitch/alertmanager` endpoint are
+next. Phase 3 (#4 — Slack / email / per-assignee routing) layers on top.
 
 ## Built from
 

@@ -56,17 +56,17 @@ func NewWebhookNotifier(url, method string, headers map[string]string, client *h
 // with status code and (truncated) body so the operator can diagnose.
 func (n *WebhookNotifier) Send(ctx context.Context, msg models.CaughtMessage) error {
 	if strings.TrimSpace(n.url) == "" {
-		return fmt.Errorf("webhook: URL is empty")
+		return permanent(fmt.Errorf("webhook: URL is empty"))
 	}
 
 	body, err := json.Marshal(WebhookPayload{Message: msg.Message, ObjectID: msg.ObjectID})
 	if err != nil {
-		return fmt.Errorf("webhook: marshal message: %w", err)
+		return permanent(fmt.Errorf("webhook: marshal message: %w", err))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, n.method, n.url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("webhook: build request: %w", err)
+		return permanent(fmt.Errorf("webhook: build request: %w", err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range n.headers {
@@ -81,7 +81,7 @@ func (n *WebhookNotifier) Send(ctx context.Context, msg models.CaughtMessage) er
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("webhook: %s returned %d: %s", n.url, resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return newStatusError(resp, fmt.Sprintf("webhook: %s returned %d: %s", n.url, resp.StatusCode, strings.TrimSpace(string(respBody))))
 	}
 	return nil
 }

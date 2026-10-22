@@ -3,7 +3,9 @@ package server
 import (
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,6 +36,9 @@ type OutputResult struct {
 	Output string `json:"output"`
 	Result string `json:"result"` // sent | failed | filtered | dry-run
 	Error  string `json:"error,omitempty"`
+	// Attempts counts the sends, retries included (#68); 0 when filtered.
+	Attempts     int  `json:"attempts,omitempty"`
+	DeadLettered bool `json:"deadLettered,omitempty"`
 }
 
 // events is the in-process event log and the dispatch counters. Per pod and
@@ -45,6 +50,8 @@ type events struct {
 	next     int
 	full     bool
 	counts   map[[2]string]uint64 // {output, result}
+	retries  map[string]uint64    // by output
+	parked   map[string]uint64    // dead-lettered, by output
 	messages map[bool]uint64      // by routed
 	outputs  []string
 }
@@ -56,12 +63,15 @@ func newEvents(capacity int, outputs []string) *events {
 	e := &events{
 		buf:      make([]Event, capacity),
 		counts:   map[[2]string]uint64{},
+		retries:  map[string]uint64{},
+		parked:   map[string]uint64{},
 		messages: map[bool]uint64{false: 0, true: 0},
 		outputs:  outputs,
 	}
 	// Every series from the start, so rate() and absent-alerts work before
 	// the first failure.
 	for _, o := range outputs {
+		e.retries[o], e.parked[o] = 0, 0
 		for _, r := range notify.Results {
 			e.counts[[2]string{o, r}] = 0
 		}
@@ -81,7 +91,7 @@ func (e *events) record(rec notify.Record) {
 		Outputs:  make([]OutputResult, 0, len(rec.Results)),
 	}
 	for _, r := range rec.Results {
-		or := OutputResult{Output: r.Output, Result: r.Result()}
+		or := OutputResult{Output: r.Output, Result: r.Result(), Attempts: r.Attempts, DeadLettered: r.DeadLettered}
 		if r.Err != nil {
 			or.Error = r.Err.Error()
 		}
@@ -97,6 +107,12 @@ func (e *events) record(rec notify.Record) {
 	e.full = e.full || e.next == 0
 	for _, or := range ev.Outputs {
 		e.counts[[2]string{or.Output, or.Result}]++
+		if or.Attempts > 1 {
+			e.retries[or.Output] += uint64(or.Attempts - 1)
+		}
+		if or.DeadLettered {
+			e.parked[or.Output]++
+		}
 	}
 	e.messages[ev.Routed]++
 }
@@ -156,6 +172,7 @@ func (e *events) writeMetrics(w io.Writer) {
 	for k, v := range e.counts {
 		counts[k] = v
 	}
+	retries, parked := maps.Clone(e.retries), maps.Clone(e.parked)
 	routed, unrouted := e.messages[true], e.messages[false]
 	e.mu.Unlock()
 
@@ -171,10 +188,19 @@ func (e *events) writeMetrics(w io.Writer) {
 		_, _ = fmt.Fprintf(w, "notification_catcher_dispatch_total{output=\"%s\",result=\"%s\"} %d\n",
 			escapeLabel(k[0]), escapeLabel(k[1]), counts[k])
 	}
+	writeByOutput(w, "notification_catcher_retries_total", "Sends repeated after a transient failure, per output.", retries)
+	writeByOutput(w, "notification_catcher_dead_letter_total", "Sends parked in the dead-letter stream after their retries, per output.", parked)
 	_, _ = io.WriteString(w, "# HELP notification_catcher_messages_total Dispatched messages, by whether any output matched.\n")
 	_, _ = io.WriteString(w, "# TYPE notification_catcher_messages_total counter\n")
 	_, _ = fmt.Fprintf(w, "notification_catcher_messages_total{routed=\"true\"} %d\n", routed)
 	_, _ = fmt.Fprintf(w, "notification_catcher_messages_total{routed=\"false\"} %d\n", unrouted)
+}
+
+func writeByOutput(w io.Writer, name, help string, m map[string]uint64) {
+	_, _ = fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s counter\n", name, help, name)
+	for _, o := range slices.Sorted(maps.Keys(m)) {
+		_, _ = fmt.Fprintf(w, "%s{output=\"%s\"} %d\n", name, escapeLabel(o), m[o])
+	}
 }
 
 var labelEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)

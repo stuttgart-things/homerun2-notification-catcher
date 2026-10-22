@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,7 +18,50 @@ import (
 // fatal startup error — silent misconfig is the worst failure mode for a
 // dispatch service.
 type NotifyConfig struct {
+	// Retry is the default retry policy of every output (#68).
+	Retry   RetryConfig    `yaml:"retry,omitempty"`
 	Outputs []OutputConfig `yaml:"outputs"`
+}
+
+// RetryConfig is how often an output retries a failed send. Unset fields
+// fall back to the top-level retry, then to DefaultRetryAttempts and
+// DefaultRetryBackoff.
+type RetryConfig struct {
+	// Attempts counts every send, the first one included: 1 never retries.
+	Attempts int `yaml:"attempts,omitempty"`
+	// Backoff is the first wait (Go duration); each further wait doubles,
+	// up to MaxRetryBackoff.
+	Backoff string `yaml:"backoff,omitempty"`
+}
+
+// Retry defaults and bounds. The whole fan-out of a message has to finish
+// inside the catcher's dispatch budget (30s), so retries stay short.
+const (
+	DefaultRetryAttempts = 3
+	DefaultRetryBackoff  = time.Second
+	MaxRetryAttempts     = 10
+	MaxRetryBackoff      = 10 * time.Second
+)
+
+// RetryPolicy is a resolved RetryConfig.
+type RetryPolicy struct {
+	Attempts int
+	Backoff  time.Duration
+}
+
+// RetryFor resolves the retry policy of o: its own fields, then cfg.Retry,
+// then the defaults. Validate has checked the values.
+func (cfg *NotifyConfig) RetryFor(o OutputConfig) RetryPolicy {
+	p := RetryPolicy{Attempts: DefaultRetryAttempts, Backoff: DefaultRetryBackoff}
+	for _, r := range []RetryConfig{cfg.Retry, o.Retry} {
+		if r.Attempts > 0 {
+			p.Attempts = r.Attempts
+		}
+		if d, err := time.ParseDuration(strings.TrimSpace(r.Backoff)); err == nil {
+			p.Backoff = d
+		}
+	}
+	return p
 }
 
 // OutputConfig is one notification sink — a Teams channel, a generic webhook,
@@ -33,6 +77,8 @@ type OutputConfig struct {
 	// Card shapes the Adaptive Card of an msteams output. Unset: the default
 	// card (title, message, a FactSet of severity/system/author/tags/time).
 	Card CardConfig `yaml:"card,omitempty"`
+	// Retry overrides the top-level retry policy for this output.
+	Retry RetryConfig `yaml:"retry,omitempty"`
 }
 
 // CardConfig customises the Teams card. Facts, when set, replaces the default
@@ -197,6 +243,9 @@ func Validate(cfg *NotifyConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
 	}
+	if err := validateRetry("retry", cfg.Retry); err != nil {
+		return err
+	}
 	seen := map[string]struct{}{}
 	for i, o := range cfg.Outputs {
 		prefix := fmt.Sprintf("output[%d]", i)
@@ -236,6 +285,9 @@ func Validate(cfg *NotifyConfig) error {
 				return fmt.Errorf("%s: filters.match key %q is not a recognised field", prefix, k)
 			}
 		}
+		if err := validateRetry(prefix+": retry", o.Retry); err != nil {
+			return err
+		}
 		if len(o.Card.Facts) > 0 && o.Type != OutputTypeTeams {
 			return fmt.Errorf("%s: card is only supported for type %q", prefix, OutputTypeTeams)
 		}
@@ -253,6 +305,19 @@ func Validate(cfg *NotifyConfig) error {
 					return fmt.Errorf("%s: field %q is not a recognised field", fp, field)
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func validateRetry(prefix string, r RetryConfig) error {
+	if r.Attempts < 0 || r.Attempts > MaxRetryAttempts {
+		return fmt.Errorf("%s.attempts %d: must be 1..%d", prefix, r.Attempts, MaxRetryAttempts)
+	}
+	if b := strings.TrimSpace(r.Backoff); b != "" {
+		d, err := time.ParseDuration(b)
+		if err != nil || d < 0 || d > MaxRetryBackoff {
+			return fmt.Errorf("%s.backoff %q: must be a Go duration from 0 to %s", prefix, b, MaxRetryBackoff)
 		}
 	}
 	return nil

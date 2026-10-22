@@ -24,6 +24,8 @@ Two layers:
 | `BASE_PATH` | *(empty)* | URL prefix of the UI behind a proxy |
 | `EVENTS_CAPACITY` | `200` | Messages the UI's event log keeps |
 | `SINK_URL` | *(empty)* | The sink's UI; the event log links each message there |
+| `DEAD_LETTER_STREAM` | `notification-catcher-dead-letter` | Redis stream where sends that still fail after their retries are parked; `off`: only logged. See [Retries and dead letter](#retries-and-dead-letter) |
+| `DEAD_LETTER_MAXLEN` | `10000` | The dead-letter stream is trimmed to about this many entries |
 | `LOG_FORMAT` | `json` | `json` or `text` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs but Notifier.Send is skipped — matching outputs log "would send" at INFO instead. |
@@ -112,6 +114,56 @@ Each row sets `title` and exactly one of `tag` (key looked up in the comma-separ
 `${VAR}` references in the YAML resolve from environment at load time. Empty or unset values are fatal — silent misconfig is the worst failure mode for a dispatch service.
 
 For deployments via Flux + SOPS, see [Deployment](deployment.md) — the rendered ConfigMap uses `$${VAR}` (double-dollar) so Flux's substitution leaves a single `${VAR}` for the catcher to resolve at runtime.
+
+## Retries and dead letter
+
+A send that fails with a transient error is retried with exponential
+backoff (#68): connection errors and timeouts, `408`, `425`, `429` and
+`5xx`. A `Retry-After` header is honoured. Any other `4xx` (a wrong URL, a
+rejected payload) fails at once.
+
+```yaml
+retry:              # default for every output
+  attempts: 3       # sends in total, the first included; 1 = no retry (max 10)
+  backoff: 1s       # first wait, doubled each time, at most 10s per wait
+outputs:
+  - name: teams-platform-alerts
+    type: msteams
+    webhook_url: ${TEAMS_WEBHOOK_URL}
+    retry:
+      attempts: 5   # unset fields fall back to the top-level retry
+```
+
+Without a `retry` block the defaults are 3 attempts from 1s. Outputs run
+in parallel for each message, so an output that retries through an outage
+does not hold up the others. Messages still go out one at a time, so each
+channel gets them in stream order. The whole fan-out of a message has 30s.
+A wait that would not fit is skipped and the send counts as failed, which
+keeps every entry well inside redisqueue's 60s visibility timeout.
+
+A send that still fails is **parked** in the dead-letter stream
+(`DEAD_LETTER_STREAM`), one entry per output and message:
+
+| Field | |
+|---|---|
+| `output` | the output's name |
+| `objectId`, `streamId` | the message's objectId and its entry in the source stream |
+| `error`, `attempts`, `failedAt` | the last error, the sends made, when it gave up (RFC 3339) |
+| `message` | the message as JSON (the webhook payload), so the entry outlives the pitcher's JSON document |
+
+```bash
+kubectl -n homerun2 exec redis-stack-node-0 -- redis-cli -a "$REDIS_PASSWORD" --no-auth-warning XRANGE notification-catcher-dead-letter - + COUNT 10
+```
+
+The stream entry is acked only when every matching output delivered or
+parked the message. If the dead-letter write fails as well, the entry is
+left pending and redisqueue delivers it again after its visibility timeout.
+That repeats the outputs that did succeed, so delivery is at least once.
+On SIGTERM, pending waits end: the failed outputs are parked right away
+instead of holding up the shutdown.
+
+With `DEAD_LETTER_STREAM=off`, a failed send is only logged (`notifier
+failed`), as before #68.
 
 ## Smoke test
 
