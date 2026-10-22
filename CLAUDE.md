@@ -76,6 +76,8 @@ Filter semantics (all AND together):
 
 Per-output failures are logged but don't block the rest of the fan-out. See `notify.example.yaml` for a full example.
 
+Retries (#68): `retry: {attempts, backoff}` at the top level, overridable per output (defaults 3 attempts from 1s, doubling, ≤10s per wait). Transient errors only (connection, timeout, 408/425/429, 5xx, `Retry-After` honoured). Outputs run in parallel per message, messages one at a time; the fan-out has 30s (`dispatchTimeout`, below redisqueue's 60s visibility timeout). A send that still fails is parked in `DEAD_LETTER_STREAM`; the stream entry is acked only when every output delivered or parked it (`notify.Undelivered`, handler error → no ack → redelivered). `Dispatcher.Stop` on SIGTERM ends pending waits.
+
 ## Git Workflow
 
 Branch-per-issue with PR and merge to main.
@@ -113,7 +115,9 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/teams.go` — MS Teams Adaptive-Card notifier
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
-- `internal/notify/dispatcher.go` — fan-out across configured outputs; one summary log line per message (`dispatched` with each output's result, or `no output matched`, #49) and the `OnDispatch` hook
+- `internal/notify/retry.go` — `Retryable` (`StatusError`, permanent errors), the backoff loop, `DeadLetter` interface, `Stop`, `Undelivered` (#68)
+- `internal/catcher/deadletter.go` — `RedisDeadLetter`: XADD to the dead-letter stream with the message JSON
+- `internal/notify/dispatcher.go` — fan-out across configured outputs (in parallel per message, #68); one summary log line per message (`dispatched` with each output's result, or `no output matched`, #49) and the `OnDispatch` hook
 - `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/webui/static/vendor/`, no CDN; see `docs/sink.md`
 - `internal/sink/assert.go` — `AssertClient.AssertPosts`: the polling behind `assert-card` (selection on the sink's side, expectations checked locally to report near misses)
 - `internal/server/` — optional read-only HTTP surface (#22, `HTTP_ADDR`): `/healthz` (Redis ping, 503 while connecting/down), the loaded config at `<BASE_PATH>/` and `/api/config` with secrets redacted (`RedactURL`, header values); `<BASE_PATH>/events` + `/api/events`: in-process ring buffer of dispatched messages with each output's result (`events.go`, fed by `Dispatcher.OnDispatch`, links to the sink via `SINK_URL`); `/metrics` (`notification_catcher_dispatch_total{output,result}`, hand-written text format, no client lib); `AUTH_TOKEN`; see `docs/http-ui.md`
@@ -144,6 +148,8 @@ Branch-per-issue with PR and merge to main.
 | `BASE_PATH` | *(empty)* | URL prefix of the UI behind a proxy |
 | `EVENTS_CAPACITY` | `200` | Messages the UI's event log keeps |
 | `SINK_URL` | *(empty)* | The sink's UI; the event log links each objectId to `<SINK_URL>/?objectId=…` |
+| `DEAD_LETTER_STREAM` | `notification-catcher-dead-letter` | Redis stream for sends that fail after their retries (#68); `off`: only logged |
+| `DEAD_LETTER_MAXLEN` | `10000` | Approximate cap of the dead-letter stream |
 | `LOG_FORMAT` | `json` | Log format: `json` or `text` |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs as usual but matching outputs log "would send" at INFO and skip the Notifier.Send call. Use on first reconciliation after a config change to verify routing without spamming Teams. |

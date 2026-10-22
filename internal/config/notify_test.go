@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadNotifyConfig_PlaceholderInCommentIsIgnored(t *testing.T) {
@@ -302,5 +303,53 @@ func TestValidate_CardFacts(t *testing.T) {
 				t.Errorf("expected error containing %q, got %v", tc.want, err)
 			}
 		})
+	}
+}
+
+func TestRetryFor(t *testing.T) {
+	cfg := &NotifyConfig{
+		Retry: RetryConfig{Attempts: 5},
+		Outputs: []OutputConfig{
+			{Name: "inherits"},
+			{Name: "own", Retry: RetryConfig{Attempts: 1, Backoff: "250ms"}},
+		},
+	}
+	if got := cfg.RetryFor(cfg.Outputs[0]); got != (RetryPolicy{Attempts: 5, Backoff: DefaultRetryBackoff}) {
+		t.Errorf("inherits: %+v", got)
+	}
+	if got := cfg.RetryFor(cfg.Outputs[1]); got != (RetryPolicy{Attempts: 1, Backoff: 250 * time.Millisecond}) {
+		t.Errorf("own: %+v", got)
+	}
+	if got := (&NotifyConfig{}).RetryFor(OutputConfig{}); got != (RetryPolicy{Attempts: DefaultRetryAttempts, Backoff: DefaultRetryBackoff}) {
+		t.Errorf("defaults: %+v", got)
+	}
+}
+
+func TestValidate_Retry(t *testing.T) {
+	out := func(r RetryConfig) *NotifyConfig {
+		return &NotifyConfig{Outputs: []OutputConfig{{Name: "x", Type: OutputTypeWebhook, URL: "https://a", Retry: r}}}
+	}
+	for _, tc := range []struct {
+		cfg  *NotifyConfig
+		want string // "" = valid
+	}{
+		{out(RetryConfig{Attempts: 3, Backoff: "2s"}), ""},
+		{out(RetryConfig{Backoff: "0s"}), ""},
+		{out(RetryConfig{Attempts: 11}), `output[0] "x": retry.attempts 11`},
+		{out(RetryConfig{Attempts: -1}), "retry.attempts -1"},
+		{out(RetryConfig{Backoff: "soon"}), `retry.backoff "soon"`},
+		{out(RetryConfig{Backoff: "1m"}), `retry.backoff "1m"`},
+		{&NotifyConfig{Retry: RetryConfig{Backoff: "-1s"}}, `retry.backoff "-1s"`},
+	} {
+		err := Validate(tc.cfg)
+		if tc.want == "" {
+			if err != nil {
+				t.Errorf("%+v: expected valid, got %v", tc.cfg, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("expected error containing %q, got %v", tc.want, err)
+		}
 	}
 }

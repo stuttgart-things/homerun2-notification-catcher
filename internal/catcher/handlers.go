@@ -9,7 +9,7 @@ import (
 
 // LogHandler returns a MessageHandler that logs messages with severity-aware levels.
 func LogHandler() MessageHandler {
-	return func(msg models.CaughtMessage) {
+	return func(msg models.CaughtMessage) error {
 		level := severityToLevel(msg.Severity)
 
 		slog.Log(context.Background(), level, "message caught",
@@ -23,6 +23,7 @@ func LogHandler() MessageHandler {
 			"timestamp", msg.Timestamp,
 			"tags", msg.Tags,
 		)
+		return nil
 	}
 }
 

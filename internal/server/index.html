@@ -106,6 +106,7 @@
             <div><dt>Redis</dt><dd>{{if eq .Health.Redis "ok"}}<span class="ok">ok</span>{{else if eq .Health.Redis "connecting"}}<span class="warn">connecting</span>{{else}}<span class="bad">{{.Health.Redis}}</span>{{end}} <span class="hint">{{.RedisAddr}}</span></dd></div>
             <div><dt>Streams</dt><dd>{{join .Streams ", "}}</dd></div>
             <div><dt>Consumer group</dt><dd>{{.ConsumerGroup}}</dd></div>
+            <div><dt>Dead letter</dt><dd>{{with .DeadLetterStream}}stream <code>{{.}}</code>{{else}}<span class="warn">off</span> <span class="hint">failed sends are only logged</span>{{end}}</dd></div>
             <div><dt>Dry run</dt><dd>{{if .DryRun}}<span class="warn">on</span> <span class="hint">matching outputs log, nothing is sent</span>{{else}}off{{end}}</dd></div>
         </dl>
 
@@ -113,7 +114,7 @@
         <p class="hint">Every caught message goes to each output whose filters all match. Secrets are redacted: URL query values and keys in the path, header values.</p>
         <div class="overflow-auto">
         <table>
-            <thead><tr><th>Name</th><th>Type</th><th>Target</th><th>Filters</th><th>Card facts</th></tr></thead>
+            <thead><tr><th>Name</th><th>Type</th><th>Target</th><th>Filters</th><th>Retry</th><th>Card facts</th></tr></thead>
             <tbody>
             {{range .Outputs}}
                 <tr>
@@ -128,10 +129,11 @@
                         {{with .Filters.TagsExclude}}<span class="f"><b>tags exclude</b> {{join . " | "}}</span>{{end}}
                         {{with .Filters.MessageContains}}<span class="f"><b>message contains</b> {{join . " | "}}</span>{{end}}
                     </td>
+                    <td>{{if gt .Retry.Attempts 1}}{{.Retry.Attempts}} attempts <span class="hint">from {{.Retry.Backoff}}</span>{{else}}<span class="muted">none</span>{{end}}</td>
                     <td>{{if .CardFacts}}{{range .CardFacts}}<span class="f">{{.Title}} <b>← {{if .Tag}}tag {{.Tag}}{{else}}{{.Field}}{{end}}</b></span>{{end}}{{else if eq .Type "msteams"}}<span class="muted">default</span>{{end}}</td>
                 </tr>
             {{else}}
-                <tr><td colspan="5" class="muted">No outputs configured: messages are only logged.</td></tr>
+                <tr><td colspan="6" class="muted">No outputs configured: messages are only logged.</td></tr>
             {{end}}
             </tbody>
         </table>
@@ -152,7 +154,7 @@
                     <td>{{.Title}}{{if .ObjectID}}{{if $.SinkURL}}<a class="oid" href="{{$.SinkURL}}/?objectId={{.ObjectID}}#notifications" target="_blank">{{.ObjectID}}</a>{{else}}<span class="oid">{{.ObjectID}}</span>{{end}}{{end}}</td>
                     <td><span class="sev-{{lower .Severity}}">{{.Severity}}</span></td>
                     <td>{{.System}}</td>
-                    <td>{{range .Outputs}}<span class="r r-{{.Result}}" title="{{.Result}}{{with .Error}}: {{.}}{{end}}">{{.Output}}{{if ne .Result "sent"}} · {{.Result}}{{end}}</span>{{end}}{{if not .Routed}}<span class="muted">no output matched</span>{{end}}</td>
+                    <td>{{range .Outputs}}<span class="r r-{{.Result}}" title="{{.Result}}{{with .Error}}: {{.}}{{end}}">{{.Output}}{{if ne .Result "sent"}} · {{.Result}}{{end}}{{if gt .Attempts 1}} · {{.Attempts}} attempts{{end}}{{if .DeadLettered}} · dead-lettered{{end}}</span>{{end}}{{if not .Routed}}<span class="muted">no output matched</span>{{end}}</td>
                 </tr>
             {{else}}
                 <tr><td colspan="5" class="muted">{{if .Query.Result}}No events with result {{.Query.Result}}.{{else}}No messages dispatched since this pod started.{{end}}</td></tr>

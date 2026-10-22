@@ -70,6 +70,8 @@ type Options struct {
 	// SinkURL is the notification sink's UI (incl. its BASE_PATH), when the
 	// cluster runs one: each event links to its notification there.
 	SinkURL string
+	// DeadLetterStream is where failed sends are parked (#68); empty: off.
+	DeadLetterStream string
 }
 
 // Server serves the health check and the config view.
@@ -176,12 +178,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // ConfigView is the loaded routing config as the UI shows it: secrets
 // redacted, everything else as loaded.
 type ConfigView struct {
-	Build         BuildInfo    `json:"build"`
-	DryRun        bool         `json:"dryRun"`
-	RedisAddr     string       `json:"redisAddr"`
-	Streams       []string     `json:"streams"`
-	ConsumerGroup string       `json:"consumerGroup"`
-	Outputs       []OutputView `json:"outputs"`
+	Build         BuildInfo `json:"build"`
+	DryRun        bool      `json:"dryRun"`
+	RedisAddr     string    `json:"redisAddr"`
+	Streams       []string  `json:"streams"`
+	ConsumerGroup string    `json:"consumerGroup"`
+	// DeadLetterStream is empty when failed sends are only logged.
+	DeadLetterStream string       `json:"deadLetterStream"`
+	Outputs          []OutputView `json:"outputs"`
 }
 
 // OutputView is one output with its target redacted: URL query values and
@@ -195,6 +199,13 @@ type OutputView struct {
 	Headers   []string                `json:"headers,omitempty"` // "Name: REDACTED"
 	Filters   FiltersView             `json:"filters"`
 	CardFacts []config.CardFactConfig `json:"cardFacts,omitempty"`
+	Retry     RetryView               `json:"retry"`
+}
+
+// RetryView is an output's resolved retry policy (#68).
+type RetryView struct {
+	Attempts int    `json:"attempts"`
+	Backoff  string `json:"backoff"`
 }
 
 // FiltersView is config.OutputFilters with JSON names.
@@ -224,12 +235,13 @@ func (f FiltersView) MatchPairs() []string {
 
 func (s *Server) view() ConfigView {
 	v := ConfigView{
-		Build:         s.opts.Build,
-		DryRun:        s.opts.DryRun,
-		RedisAddr:     s.opts.RedisAddr,
-		Streams:       s.opts.Streams,
-		ConsumerGroup: s.opts.ConsumerGroup,
-		Outputs:       []OutputView{},
+		Build:            s.opts.Build,
+		DryRun:           s.opts.DryRun,
+		RedisAddr:        s.opts.RedisAddr,
+		Streams:          s.opts.Streams,
+		ConsumerGroup:    s.opts.ConsumerGroup,
+		DeadLetterStream: s.opts.DeadLetterStream,
+		Outputs:          []OutputView{},
 	}
 	if s.opts.Config == nil {
 		return v
@@ -253,6 +265,8 @@ func (s *Server) view() ConfigView {
 			},
 			CardFacts: o.Card.Facts,
 		}
+		rp := s.opts.Config.RetryFor(o)
+		ov.Retry = RetryView{Attempts: rp.Attempts, Backoff: rp.Backoff.String()}
 		for name := range o.Headers {
 			ov.Headers = append(ov.Headers, name+": "+redacted)
 		}

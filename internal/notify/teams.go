@@ -57,18 +57,18 @@ func (n *TeamsNotifier) WithCard(card config.CardConfig) *TeamsNotifier {
 // Non-2xx responses are returned as errors with the response body included.
 func (n *TeamsNotifier) Send(ctx context.Context, msg models.CaughtMessage) error {
 	if n.webhookURL == "" {
-		return fmt.Errorf("teams: webhook URL is empty")
+		return permanent(fmt.Errorf("teams: webhook URL is empty"))
 	}
 
 	envelope := BuildEnvelopeWithCard(msg, n.card)
 	body, err := json.Marshal(envelope)
 	if err != nil {
-		return fmt.Errorf("teams: marshal envelope: %w", err)
+		return permanent(fmt.Errorf("teams: marshal envelope: %w", err))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.webhookURL, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("teams: build request: %w", err)
+		return permanent(fmt.Errorf("teams: build request: %w", err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -80,7 +80,7 @@ func (n *TeamsNotifier) Send(ctx context.Context, msg models.CaughtMessage) erro
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("teams: webhook returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return newStatusError(resp, fmt.Sprintf("teams: webhook returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody))))
 	}
 
 	return nil

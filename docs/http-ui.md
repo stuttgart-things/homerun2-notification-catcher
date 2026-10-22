@@ -43,6 +43,8 @@ notification_catcher_dispatch_total{output="teams-platform-alerts",result="sent"
 notification_catcher_dispatch_total{output="teams-platform-alerts",result="failed"} 1
 notification_catcher_dispatch_total{output="teams-platform-alerts",result="filtered"} 40
 notification_catcher_dispatch_total{output="teams-platform-alerts",result="dry-run"} 0
+notification_catcher_retries_total{output="teams-platform-alerts"} 2
+notification_catcher_dead_letter_total{output="teams-platform-alerts"} 1
 notification_catcher_messages_total{routed="true"} 12
 notification_catcher_messages_total{routed="false"} 3
 ```
@@ -51,6 +53,12 @@ Every output starts with all four results at 0, so an alert like
 `increase(notification_catcher_dispatch_total{result="failed"}[10m]) > 0`
 works from the start. The logs carry the same per message: `dispatched`
 with each output's result, or `no output matched` (#49).
+
+`retries_total` counts the sends repeated after a transient failure,
+`dead_letter_total` the sends parked in the dead-letter stream (#68, see
+[Retries and dead letter](configuration.md#retries-and-dead-letter)). The
+event log shows both for each output (`· 3 attempts · dead-lettered`), and
+the config page shows each output's retry policy and the dead-letter stream.
 
 ## Redaction
 

@@ -21,6 +21,14 @@
 #   severity, system, author, title, assigneename, assigneeaddress
 # Use tags_contain / message_contains for substring matches on Tags / Message.
 
+# Retry policy of every output; an output's own `retry:` overrides it field
+# by field. Connection errors, timeouts, 408/425/429 and 5xx are retried with
+# exponential backoff; a send that still fails is parked in the dead-letter
+# stream (DEAD_LETTER_STREAM). Defaults: 3 attempts from 1s.
+retry:
+  attempts: 3
+  backoff: 1s
+
 outputs:
   # MS Teams channel — Power Automate "post-message-in-chat" webhook.
   # Fires for warning+ messages from the kubernetes system tagged with infra

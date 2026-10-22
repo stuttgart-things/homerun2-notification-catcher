@@ -331,6 +331,15 @@ func (s *Store) add(m *Message, raw []byte) *Message {
 		return false
 	})
 	n.Deliveries = append(n.Deliveries, Delivery{PostID: m.ID, Kind: m.Kind, Channel: m.Channel, ReceivedAt: m.ReceivedAt})
+	// By kind and channel, not arrival: the catcher sends to its outputs
+	// in parallel (#68), so the arrival order is random.
+	sort.SliceStable(n.Deliveries, func(i, j int) bool {
+		a, b := n.Deliveries[i], n.Deliveries[j]
+		if a.Kind != b.Kind {
+			return a.Kind < b.Kind
+		}
+		return a.Channel < b.Channel
+	})
 	n.fillFromPost(m)
 	if n.ObjectID == "" {
 		n.ObjectID = m.ObjectID

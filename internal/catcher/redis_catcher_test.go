@@ -8,6 +8,7 @@ package catcher
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
 )
 
 const (
@@ -140,10 +142,11 @@ type recorder struct {
 	ids []string
 }
 
-func (r *recorder) handle(msg models.CaughtMessage) {
+func (r *recorder) handle(msg models.CaughtMessage) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ids = append(r.ids, msg.ObjectID)
+	return nil
 }
 
 // waitFor waits until n messages were handled and returns their IDs.
@@ -225,12 +228,12 @@ func TestRedisCatcher_HandlesStreamInOrder(t *testing.T) {
 	f := newFakeRedis(t)
 
 	rec := &recorder{}
-	slowOnEven := func(msg models.CaughtMessage) {
+	slowOnEven := func(msg models.CaughtMessage) error {
 		// Uneven handling time lets any concurrent worker overtake another.
 		if n, _ := strconv.Atoi(msg.Title); n%2 == 0 {
 			time.Sleep(2 * time.Millisecond)
 		}
-		rec.handle(msg)
+		return rec.handle(msg)
 	}
 	f.startCatcher(t, "", slowOnEven)
 
@@ -248,3 +251,76 @@ func TestRedisCatcher_HandlesStreamInOrder(t *testing.T) {
 
 // TestRedisCatcher_BurstEndsOnLastEffect replays the button hub case from #55:
 // a point and the match-winning point pitched 1 ms apart. The match effect
+
+// A handler error leaves the entry pending, so redisqueue delivers it again;
+// a handled one is acked (#68).
+func TestRedisCatcher_HandlerErrorLeavesEntryPending(t *testing.T) {
+	f := newFakeRedis(t)
+
+	rec := &recorder{}
+	failOnLost := func(msg models.CaughtMessage) error {
+		_ = rec.handle(msg)
+		if msg.ObjectID == "lost" {
+			return errors.New("dead-letter: XADD: connection refused")
+		}
+		return nil
+	}
+	f.startCatcher(t, "", failOnLost)
+	f.pitch(t, "lost", homerun.Message{System: testStream})
+	f.pitch(t, "delivered", homerun.Message{System: testStream})
+	rec.waitFor(t, 2)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		pending, err := f.client.XPendingExt(context.Background(), &redis.XPendingExtArgs{
+			Stream: testStream, Group: testGroup, Start: "-", End: "+", Count: 10,
+		}).Result()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) == 1 {
+			msgs, _ := f.client.XRange(context.Background(), testStream, pending[0].ID, pending[0].ID).Result()
+			if len(msgs) != 1 || msgs[0].Values["messageID"] != "lost" {
+				t.Fatalf("pending %v, want the failed entry", msgs)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pending %v, want exactly the failed entry", pending)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestRedisDeadLetter_Park(t *testing.T) {
+	f := newFakeRedis(t)
+	c, err := newRedisCatcher(f.client, f.client, "", []string{testStream}, testGroup, "test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dl := c.DeadLetter("dead", 100)
+	at := time.Date(2026, 10, 22, 7, 45, 13, 0, time.UTC)
+	err = dl.Park(context.Background(), notify.DeadLetterEntry{
+		Output:   "sink-inbox",
+		Message:  models.CaughtMessage{Message: homerun.Message{Title: "disk", Severity: "warning"}, ObjectID: "obj-1", StreamID: "1-0"},
+		Err:      errors.New("connect: no route to host"),
+		Attempts: 3,
+		At:       at,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := f.client.XRange(context.Background(), "dead", "-", "+").Result()
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("XRANGE: %v %v", msgs, err)
+	}
+	v := msgs[0].Values
+	if v["output"] != "sink-inbox" || v["objectId"] != "obj-1" || v["streamId"] != "1-0" || v["attempts"] != "3" ||
+		v["error"] != "connect: no route to host" || v["failedAt"] != "2026-10-22T07:45:13Z" {
+		t.Errorf("entry %v", v)
+	}
+	var payload notify.WebhookPayload
+	if err := json.Unmarshal([]byte(fmt.Sprint(v["message"])), &payload); err != nil || payload.Title != "disk" || payload.ObjectID != "obj-1" {
+		t.Errorf("message %v: %+v %v", v["message"], payload, err)
+	}
+}
