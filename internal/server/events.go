@@ -238,7 +238,8 @@ func (s *Server) handleEventsJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.events.list(q))
 }
 
-func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	s.events.writeMetrics(w)
+	s.writeDeadLetterPending(r.Context(), w)
 }

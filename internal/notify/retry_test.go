@@ -252,3 +252,19 @@ func TestDispatch_OutputsRunInParallel(t *testing.T) {
 type notifierFunc func(context.Context, models.CaughtMessage) error
 
 func (f notifierFunc) Send(ctx context.Context, m models.CaughtMessage) error { return f(ctx, m) }
+
+// SendTo replays one output: its retries, not its filters (#70).
+func TestDispatcher_SendTo(t *testing.T) {
+	ts, calls := flakyEndpoint(t, 1, http.StatusServiceUnavailable, nil)
+	e := webhookEntry("hook", ts.URL, 3)
+	e.Filters = config.OutputFilters{SeverityMin: "critical"}
+	d := NewDispatcherWithNotifiers(e)
+
+	attempts, err := d.SendTo(context.Background(), "hook", caught(homerun.Message{Title: "t", Severity: "info"}))
+	if err != nil || attempts != 2 || calls.Load() != 2 {
+		t.Fatalf("SendTo: %d attempts, %v, %d calls; want sent on the 2nd, filters ignored", attempts, err, calls.Load())
+	}
+	if _, err := d.SendTo(context.Background(), "nope", caught(homerun.Message{})); err == nil || Retryable(err) {
+		t.Errorf("unknown output: %v, want a permanent error", err)
+	}
+}

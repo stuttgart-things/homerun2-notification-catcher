@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -51,6 +52,14 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "sink" {
 		if err := runSink(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "sink:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "replay" {
+		if err := runReplay(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "replay:", err)
 			os.Exit(1)
 		}
 		return
@@ -189,7 +198,11 @@ func runServer() error {
 	}
 
 	if deadLetterStream != "" {
-		dispatcher.DeadLetter = c.DeadLetter(deadLetterStream, int64(deadLetterMaxLen))
+		dl := c.DeadLetter(deadLetterStream, int64(deadLetterMaxLen))
+		dispatcher.DeadLetter = dl
+		if ui != nil {
+			ui.SetDeadLetter(dl)
+		}
 	}
 
 	slog.Info("catcher configured",
@@ -294,6 +307,132 @@ func runSmoke(args []string) error {
 
 	results := dispatcher.Dispatch(ctx, models.CaughtMessage{Message: msg, ObjectID: *objectID})
 	return printSmokeResults(results)
+}
+
+// runReplay sends the entries parked in the dead-letter stream (#70) again
+// through one output, with the config and card of now, and deletes each one
+// that goes through; a failure stays parked. Run it where the catcher runs:
+// it reads the same CONFIG_PATH, REDIS_* and DEAD_LETTER_STREAM.
+//
+//	notification-catcher replay --output teams-platform-alerts --dry-run
+//	notification-catcher replay --output sink-inbox --since 24h
+//	notification-catcher replay --output webhook-generic --object-id 2f6c…
+//
+// Entries go out oldest first, one at a time, each with the output's retry
+// policy. Exits 1 when one could not be sent. In main.go for the same reason
+// as runSmoke.
+func runReplay(args []string) error {
+	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var (
+		cfgPath  = fs.String("config", "", "path to notify config YAML (default: CONFIG_PATH, as the catcher)")
+		output   = fs.String("output", "", "replay the entries of this output (required)")
+		objectID = fs.String("object-id", "", "only the entry of this objectId")
+		since    = fs.String("since", "", "only entries parked since then: a duration (24h) or an RFC 3339 time")
+		stream   = fs.String("stream", homerun.GetEnv("DEAD_LETTER_STREAM", catcher.DefaultDeadLetterStream), "dead-letter stream")
+		timeout  = fs.Duration("timeout", dispatchTimeout, "timeout per entry, its retries included")
+		dryRun   = fs.Bool("dry-run", false, "list what would be sent, send and delete nothing")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*output) == "" {
+		fs.Usage()
+		return fmt.Errorf("--output is required")
+	}
+	if strings.EqualFold(*stream, "off") || *stream == "" {
+		return fmt.Errorf("the dead letter is off (DEAD_LETTER_STREAM=off): nothing is parked")
+	}
+	from, err := parseSince(*since, time.Now())
+	if err != nil {
+		return err
+	}
+
+	var cfg *config.NotifyConfig
+	if *cfgPath != "" {
+		cfg, err = config.LoadNotifyConfig(*cfgPath)
+	} else {
+		cfg, err = config.LoadNotifyConfigPath()
+	}
+	if err != nil {
+		return err
+	}
+	dispatcher, err := notify.NewDispatcher(cfg, nil)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(dispatcher.OutputNames(), *output) {
+		return fmt.Errorf("no output %q in the config (outputs: %s)", *output, strings.Join(dispatcher.OutputNames(), ", "))
+	}
+
+	dl := catcher.NewRedisDeadLetter(config.LoadRedisConfig(), *stream)
+	defer func() { _ = dl.Close() }()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	entries, err := dl.Range(ctx, from)
+	if err != nil {
+		return err
+	}
+	var sent, failed int
+	for _, e := range entries {
+		if e.Output != *output || (*objectID != "" && e.ObjectID != *objectID) {
+			continue
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		label := fmt.Sprintf("%s %s %q (parked %s)", e.ID, e.ObjectID, e.Message.Title, e.FailedAt.Format(time.RFC3339))
+		if *dryRun {
+			fmt.Printf("- %s: WOULD REPLAY (failed with: %s)\n", label, e.Error)
+			sent++
+			continue
+		}
+		sendCtx, cancel := context.WithTimeout(ctx, *timeout)
+		attempts, err := dispatcher.SendTo(sendCtx, *output, e.Caught())
+		cancel()
+		if err != nil {
+			fmt.Printf("- %s: FAIL%s: %v (kept)\n", label, attemptsNote(attempts), err)
+			failed++
+			continue
+		}
+		if err := dl.Delete(ctx, e.ID); err != nil {
+			// Sent, but still parked: a second replay would send it twice.
+			fmt.Printf("- %s: SENT%s, but not deleted: %v\n", label, attemptsNote(attempts), err)
+			failed++
+			continue
+		}
+		fmt.Printf("- %s: SENT%s, deleted\n", label, attemptsNote(attempts))
+		sent++
+	}
+
+	verb := "replayed"
+	if *dryRun {
+		verb = "would replay"
+	}
+	fmt.Printf("%s %d, failed %d (output %s, stream %s)\n", verb, sent, failed, *output, *stream)
+	if failed > 0 {
+		return fmt.Errorf("%d of %d entries not replayed", failed, sent+failed)
+	}
+	return nil
+}
+
+// parseSince reads --since: empty (everything), a duration back from now,
+// or an RFC 3339 time.
+func parseSince(v string, now time.Time) (time.Time, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return time.Time{}, nil
+	}
+	if d, err := time.ParseDuration(v); err == nil {
+		return now.Add(-d), nil
+	}
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("--since %q: want a duration (24h) or an RFC 3339 time", v)
 }
 
 // attemptsNote is " (3 attempts)" when a send was retried, else empty.

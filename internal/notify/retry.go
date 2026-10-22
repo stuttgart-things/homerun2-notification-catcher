@@ -3,12 +3,14 @@ package notify
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	homerun "github.com/stuttgart-things/homerun-library/v4"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 )
@@ -95,6 +97,25 @@ type DeadLetterEntry struct {
 	At       time.Time
 }
 
+// ParkedEntry is one entry of the dead-letter stream as read back: for the
+// UI's Dead letter tab and `notification-catcher replay` (#70).
+type ParkedEntry struct {
+	// ID is the entry's id in the dead-letter stream.
+	ID       string          `json:"id"`
+	Output   string          `json:"output"`
+	ObjectID string          `json:"objectId,omitempty"`
+	StreamID string          `json:"streamId,omitempty"`
+	Error    string          `json:"error,omitempty"`
+	Attempts int             `json:"attempts"`
+	FailedAt time.Time       `json:"failedAt"`
+	Message  homerun.Message `json:"message"`
+}
+
+// Caught is the parked message as the notifiers take it.
+func (e ParkedEntry) Caught() models.CaughtMessage {
+	return models.CaughtMessage{Message: e.Message, ObjectID: e.ObjectID, StreamID: e.StreamID}
+}
+
 // parkTimeout bounds one dead-letter write. It does not use the dispatch
 // context: that one may be what ran out.
 const parkTimeout = 5 * time.Second
@@ -131,6 +152,18 @@ func (d *Dispatcher) send(ctx context.Context, o boundOutput, msg models.CaughtM
 		}
 		wait = min(wait*2, config.MaxRetryBackoff)
 	}
+}
+
+// SendTo delivers msg to the output named name, with its retry policy and
+// without its filters: the message matched them when it was dispatched.
+// Used to replay a parked send (#70); a failure is not parked again.
+func (d *Dispatcher) SendTo(ctx context.Context, name string, msg models.CaughtMessage) (int, error) {
+	for _, o := range d.outputs {
+		if o.name == name {
+			return d.send(ctx, o, msg)
+		}
+	}
+	return 0, permanent(fmt.Errorf("no output %q in the config", name))
 }
 
 // park hands a failed send to the dead letter, when one is set.

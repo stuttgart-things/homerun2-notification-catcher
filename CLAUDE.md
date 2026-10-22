@@ -110,7 +110,7 @@ Branch-per-issue with PR and merge to main.
 ## Key Paths
 
 - `main.go` — entrypoint, server-mode bootstrap, signal handling
-- `main.go` also holds the `smoke`, `sink` and `assert-card` subcommands (one file: the Dagger Go module builds `main.go` alone)
+- `main.go` also holds the `smoke`, `sink`, `replay` and `assert-card` subcommands (one file: the Dagger Go module builds `main.go` alone)
 - `internal/catcher/catcher.go` — RedisCatcher with JSON.GET payload resolution
 - `internal/catcher/handlers.go` — `LogHandler` and `severityToLevel`
 - `internal/catcher/mock.go` — `MockCatcher` for tests
@@ -122,7 +122,8 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
 - `internal/notify/status.go` — `AlertStatus`: firing / resolved from the `status=` tag or the `Resolved: ` prefix (#71)
 - `internal/notify/retry.go` — `Retryable` (`StatusError`, permanent errors), the backoff loop, `DeadLetter` interface, `Stop`, `Undelivered` (#68)
-- `internal/catcher/deadletter.go` — `RedisDeadLetter`: XADD to the dead-letter stream with the message JSON
+- `internal/catcher/deadletter.go` — `RedisDeadLetter`: XADD to the dead-letter stream with the message JSON; `Range`/`Recent`/`Len`/`Delete` read it back as `notify.ParkedEntry` (#70), `NewRedisDeadLetter` for `replay`
+- `internal/server/deadletter.go` — the Dead letter tab, `/api/dead-letter`, `notification_catcher_dead_letter_pending` (#70)
 - `internal/notify/dispatcher.go` — fan-out across configured outputs (in parallel per message, #68); one summary log line per message (`dispatched` with each output's result, or `no output matched`, #49) and the `OnDispatch` hook
 - `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/webui/static/vendor/`, no CDN; see `docs/sink.md`
 - `internal/sink/assert.go` — `AssertClient.AssertPosts`: the polling behind `assert-card` (selection on the sink's side, expectations checked locally to report near misses)
@@ -160,6 +161,10 @@ Branch-per-issue with PR and merge to main.
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `DRY_RUN` | `false` | When truthy (`true`/`1`/`yes`/`on`), filter evaluation runs as usual but matching outputs log "would send" at INFO and skip the Notifier.Send call. Use on first reconciliation after a config change to verify routing without spamming Teams. |
 | (referenced by YAML) | — | e.g. `TEAMS_WEBHOOK_URL`, custom webhook tokens — must resolve at startup |
+
+## Replay (CLI)
+
+`notification-catcher replay --output <name> [--object-id …] [--since 24h] [--dry-run]` re-sends that output's parked entries (`Dispatcher.SendTo`: retries, no filters) and `XDEL`s each one that goes through (#70). Run in the pod: `/ko-app/homerun2-notification-catcher replay …`.
 
 ## Smoke test (CLI)
 

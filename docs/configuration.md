@@ -199,6 +199,42 @@ A send that still fails is **parked** in the dead-letter stream
 | `error`, `attempts`, `failedAt` | the last error, the sends made, when it gave up (RFC 3339) |
 | `message` | the message as JSON (the webhook payload), so the entry outlives the pitcher's JSON document |
 
+The catcher UI's **Dead letter** tab lists them (with `HTTP_ADDR`, see
+[HTTP UI](http-ui.md#dead-letter)), and `notification_catcher_dead_letter_pending`
+counts them.
+
+### Replay (#70)
+
+`notification-catcher replay` sends the parked entries of one output again,
+through that output's notifier with the config and card of now, oldest first
+and each with the output's retry policy, and deletes each entry that goes
+through. A failure stays parked; the command then exits 1. Filters are not
+applied again: the message matched them when it was dispatched.
+
+Run it in the catcher's pod, which has `CONFIG_PATH`, the `REDIS_*`
+settings and `DEAD_LETTER_STREAM`:
+
+```bash
+kubectl -n homerun2 exec deploy/homerun2-notification-catcher -- \
+  /ko-app/homerun2-notification-catcher replay --output teams-platform-alerts --dry-run
+```
+
+| Flag | |
+|---|---|
+| `--output` | the output to replay (required); an output that is no longer in the config is refused |
+| `--object-id` | only the entry of this objectId |
+| `--since` | only entries parked since then: a duration (`24h`) or an RFC 3339 time |
+| `--dry-run` | list what would be sent; send and delete nothing |
+| `--config`, `--stream`, `--timeout` | default: `CONFIG_PATH`, `DEAD_LETTER_STREAM`, 30s per entry |
+
+```
+- 1792681512800-0 obj-1 "disk 1" (parked 2026-10-22T15:05:12Z): SENT, deleted
+- 1792681513042-0 obj-2 "disk 2" (parked 2026-10-22T15:05:13Z): FAIL (3 attempts): teams: webhook returned 503 (kept)
+replayed 1, failed 1 (output teams-alerts, stream notification-catcher-dead-letter)
+```
+
+Without the UI, `redis-cli` reads the stream too:
+
 ```bash
 kubectl -n homerun2 exec redis-stack-node-0 -- redis-cli -a "$REDIS_PASSWORD" --no-auth-warning XRANGE notification-catcher-dead-letter - + COUNT 10
 ```

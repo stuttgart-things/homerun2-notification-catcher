@@ -21,6 +21,8 @@ its notification in the sink.
 | `GET <BASE_PATH>/api/config` | token | The same as JSON |
 | `GET <BASE_PATH>/events` | token | The event log: the last dispatched messages, newest first, each output as `sent` / `failed` (error on hover) / `filtered` / `dry-run`, "no output matched" when none took it. Filter `?result=failed` (or `sent`, `filtered`, `dry-run`, `unrouted`). Reloads every 10 s while "live" is on |
 | `GET <BASE_PATH>/api/events` | token | The same as JSON; `result`, `objectId`, `limit` |
+| `GET <BASE_PATH>/dead-letter` | token | The [dead-letter stream](#dead-letter): pending count, the last 200 entries, the replay command per output |
+| `GET <BASE_PATH>/api/dead-letter` | token | The same as JSON (`stream`, `pending`, `entries`, `outputs`); `503` while Redis cannot be read |
 | `GET /metrics` | no | Prometheus text format, at the root |
 | `GET <BASE_PATH>/static/…` | no | Page assets (Pico, font, logo), embedded, shared with the sink |
 
@@ -59,6 +61,32 @@ with each output's result, or `no output matched` (#49).
 [Retries and dead letter](configuration.md#retries-and-dead-letter)). The
 event log shows both for each output (`· 3 attempts · dead-lettered`), and
 the config page shows each output's retry policy and the dead-letter stream.
+
+## Dead letter
+
+The **Dead letter** tab reads the dead-letter stream (#70): how many sends
+are parked, and the newest 200, each with when it failed, the output, the
+message (objectId linked to the sink with `SINK_URL`), the attempts and the
+last error. Unlike the event log it is read from Redis, so it survives a
+restart and is the same on every pod.
+
+It is read-only. For each output with entries it shows the command that
+replays them, to run in the catcher's pod (see
+[Replay](configuration.md#replay-70)):
+
+```bash
+kubectl exec deploy/<catcher> -- /ko-app/homerun2-notification-catcher replay --output teams-platform-alerts --dry-run
+```
+
+`/metrics` adds the stream's length while the stream can be read; it is
+left out, not 0, when it cannot:
+
+```
+notification_catcher_dead_letter_pending 2
+```
+
+`notification_catcher_dead_letter_pending > 0` for an hour is a backlog
+nobody replayed.
 
 ## Redaction
 
