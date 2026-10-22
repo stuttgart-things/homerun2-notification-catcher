@@ -17,8 +17,9 @@ import (
 //     the list); the filter as a whole still AND-combines with the others
 //   - tags_exclude: no listed substring is present in msg.Tags
 //   - message_contains: at least one substring is present in msg.Message
+//   - send_resolved: false drops a resolved alert (AlertStatus, #71)
 //
-// All five rules AND together. Empty rules pass trivially, so an empty
+// All rules AND together. Empty rules pass trivially, so an empty
 // OutputFilters matches every message.
 func Matches(f config.OutputFilters, msg homerun.Message) bool {
 	if !severityAtLeast(msg.Severity, f.SeverityMin) {
@@ -36,6 +37,9 @@ func Matches(f config.OutputFilters, msg homerun.Message) bool {
 		return false
 	}
 	if len(f.MessageContains) > 0 && !anySubstring(msg.Message, f.MessageContains) {
+		return false
+	}
+	if f.SendResolved != nil && !*f.SendResolved && AlertStatus(msg) == StatusResolved {
 		return false
 	}
 	return true
@@ -87,6 +91,8 @@ func getField(msg homerun.Message, key string) string {
 		return msg.AssigneeName
 	case "assigneeaddress":
 		return msg.AssigneeAddress
+	case "status":
+		return AlertStatus(msg)
 	default:
 		return ""
 	}

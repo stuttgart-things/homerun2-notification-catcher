@@ -87,7 +87,7 @@ With `?group=true` on the receiver URL, one message per notification: the common
 
 The values feed `internal/notify/filter.go` so the catcher's YAML routing can target Alertmanager alerts by `severity_min`, `match.author: alertmanager`, `match.system: msteams`, or `tags_contain: [namespace=prod, …]`.
 
-**Resolutions and `severity_min`:** a resolved alert has severity `success`, below `warning`, so an output with `severity_min: warning` drops it. To get resolutions into a channel, give it a second output without `severity_min` that matches them, e.g. `tags_contain: [status=resolved]` plus `match.author: alertmanager` (pairing firing and resolved cards is #71).
+**Resolutions and `severity_min`:** a resolved alert has severity `success`, below `warning`, so an output with `severity_min: warning` drops it. To get resolutions into a channel, give it a second output without `severity_min`: `match: {author: alertmanager, status: resolved}`. Their cards are green with a `RESOLVED: ` title and the end time (#71, see [Configuration](configuration.md#firing-and-resolved-alerts-71)).
 
 ## Notification-catcher config
 

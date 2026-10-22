@@ -353,3 +353,35 @@ func TestValidate_Retry(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadNotifyConfig_StatusFilters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+outputs:
+  - name: resolved-only
+    type: webhook
+    url: https://a
+    filters:
+      match: {status: resolved}
+  - name: firing-only
+    type: webhook
+    url: https://b
+    filters:
+      send_resolved: false
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadNotifyConfig(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Outputs[0].Filters.Match["status"] != "resolved" {
+		t.Errorf("match %v", cfg.Outputs[0].Filters.Match)
+	}
+	if sr := cfg.Outputs[1].Filters.SendResolved; sr == nil || *sr {
+		t.Errorf("send_resolved %v, want false", sr)
+	}
+	if cfg.Outputs[0].Filters.SendResolved != nil {
+		t.Error("send_resolved unset: want nil")
+	}
+}

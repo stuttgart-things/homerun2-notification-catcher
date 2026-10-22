@@ -70,9 +70,12 @@ Filter semantics (all AND together):
 | Field | Meaning |
 |---|---|
 | `severity_min` | message rank ≥ rule rank; unknown severities on messages count as `info` |
-| `match` | exact equality on a homerun.Message field (case-insensitive on key + value). Allowed keys: `severity`, `system`, `author`, `title`, `assigneename`, `assigneeaddress`. |
+| `match` | exact equality on a homerun.Message field (case-insensitive on key + value). Allowed keys: `severity`, `system`, `author`, `title`, `assigneename`, `assigneeaddress`, `status` (alert state, `notify.AlertStatus`). |
 | `tags_contain` | any listed substring appears in `Tags` (OR within the list, case-insensitive) |
 | `message_contains` | any listed substring appears in `Message` |
+| `send_resolved` | `false` drops resolved alerts |
+
+Firing vs. resolved (#71): `notify.AlertStatus` reads the `status=` tag (omni-pitcher `/pitch/alertmanager`), else a `Resolved: ` message prefix (`/pitch/grafana`). A resolved card is green with a `RESOLVED: ` title and a `Resolved` time row.
 
 Per-output failures are logged but don't block the rest of the fan-out. See `notify.example.yaml` for a full example.
 
@@ -115,6 +118,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/teams.go` — MS Teams Adaptive-Card notifier
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
+- `internal/notify/status.go` — `AlertStatus`: firing / resolved from the `status=` tag or the `Resolved: ` prefix (#71)
 - `internal/notify/retry.go` — `Retryable` (`StatusError`, permanent errors), the backoff loop, `DeadLetter` interface, `Stop`, `Undelivered` (#68)
 - `internal/catcher/deadletter.go` — `RedisDeadLetter`: XADD to the dead-letter stream with the message JSON
 - `internal/notify/dispatcher.go` — fan-out across configured outputs (in parallel per message, #68); one summary log line per message (`dispatched` with each output's result, or `no output matched`, #49) and the `OnDispatch` hook

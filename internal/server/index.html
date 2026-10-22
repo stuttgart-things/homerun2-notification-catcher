@@ -128,6 +128,7 @@
                         {{with .Filters.TagsContain}}<span class="f"><b>tags contain</b> {{join . " | "}}</span>{{end}}
                         {{with .Filters.TagsExclude}}<span class="f"><b>tags exclude</b> {{join . " | "}}</span>{{end}}
                         {{with .Filters.MessageContains}}<span class="f"><b>message contains</b> {{join . " | "}}</span>{{end}}
+                        {{if .Filters.DropsResolved}}<span class="f"><b>no resolved</b></span>{{end}}
                     </td>
                     <td>{{if gt .Retry.Attempts 1}}{{.Retry.Attempts}} attempts <span class="hint">from {{.Retry.Backoff}}</span>{{else}}<span class="muted">none</span>{{end}}</td>
                     <td>{{if .CardFacts}}{{range .CardFacts}}<span class="f">{{.Title}} <b>← {{if .Tag}}tag {{.Tag}}{{else}}{{.Field}}{{end}}</b></span>{{end}}{{else if eq .Type "msteams"}}<span class="muted">default</span>{{end}}</td>

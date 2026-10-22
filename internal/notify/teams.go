@@ -22,6 +22,9 @@ const (
 
 	defaultTitle = "Notification"
 
+	// resolvedTitlePrefix opens the title of a resolved alert's card (#71).
+	resolvedTitlePrefix = "RESOLVED: "
+
 	// ObjectIDFooterPrefix starts the card's last TextBlock, which carries the
 	// message's objectId; the sink reads the id back from it.
 	ObjectIDFooterPrefix = "objectId "
@@ -110,13 +113,27 @@ func buildCard(msg homerun.Message, objectID string, cfg config.CardConfig) mode
 		title = defaultTitle
 	}
 	body := strings.TrimSpace(msg.Message)
+
+	// A resolved alert is green whatever its severity, and says so in the
+	// title; the message's own "Resolved: " would only repeat it.
+	style, color, label := severityToStyle(msg.Severity), severityToTextColor(msg.Severity), msg.Severity
+	resolved := AlertStatus(msg) == StatusResolved
+	if resolved {
+		style, color, label = "good", "good", StatusResolved
+		if !hasPrefixFold(title, resolvedTitlePrefix) {
+			title = resolvedTitlePrefix + title
+		}
+		if hasPrefixFold(body, resolvedPrefix) {
+			body = strings.TrimSpace(body[len(resolvedPrefix):])
+		}
+	}
 	if body == "" {
 		body = title
 	}
 
 	header := models.CardElement{
 		Type:  "Container",
-		Style: severityToStyle(msg.Severity),
+		Style: style,
 		Items: []models.CardElement{
 			{
 				Type:   "TextBlock",
@@ -124,7 +141,7 @@ func buildCard(msg homerun.Message, objectID string, cfg config.CardConfig) mode
 				Size:   "Large",
 				Weight: "Bolder",
 				Wrap:   true,
-				Color:  severityToTextColor(msg.Severity),
+				Color:  color,
 			},
 			{
 				Type: "TextBlock",
@@ -138,11 +155,11 @@ func buildCard(msg homerun.Message, objectID string, cfg config.CardConfig) mode
 		Schema:       adaptiveCardSchema,
 		Type:         "AdaptiveCard",
 		Version:      adaptiveCardVersion,
-		FallbackText: buildFallbackText(msg.Severity, title, body),
+		FallbackText: buildFallbackText(label, title, body),
 		Body:         []models.CardElement{header},
 	}
 
-	facts := buildFacts(msg)
+	facts := buildFacts(msg, resolved)
 	if len(cfg.Facts) > 0 {
 		facts = buildConfiguredFacts(msg, cfg.Facts)
 	}
@@ -192,8 +209,10 @@ func buildFallbackText(severity, title, body string) string {
 }
 
 // buildFacts builds the FactSet rows, skipping any field whose value is empty
-// after trimming. Order is fixed so card rendering is deterministic.
-func buildFacts(msg homerun.Message) []models.CardFact {
+// after trimming. Order is fixed so card rendering is deterministic. A
+// resolved alert's time is when it ended (omni-pitcher stamps it with
+// endsAt), so the row says Resolved.
+func buildFacts(msg homerun.Message, resolved bool) []models.CardFact {
 	facts := make([]models.CardFact, 0, 5)
 	add := func(title, value string) {
 		if v := strings.TrimSpace(value); v != "" {
@@ -204,7 +223,11 @@ func buildFacts(msg homerun.Message) []models.CardFact {
 	add("System", msg.System)
 	add("Author", msg.Author)
 	add("Tags", msg.Tags)
-	add("Time", msg.Timestamp)
+	if resolved {
+		add("Resolved", msg.Timestamp)
+	} else {
+		add("Time", msg.Timestamp)
+	}
 	return facts
 }
 
