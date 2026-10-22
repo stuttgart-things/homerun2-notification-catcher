@@ -1,3 +1,10 @@
+# [3.11.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.10.0...v3.11.0) (2026-10-22)
+
+
+### Features
+
+* **notify:** firing vs. resolved alerts -- green RESOLVED card, status filter, send_resolved ([9b2ace9](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/9b2ace9c041cb8f573f4f8ea1d3293f4a6cdf211)), closes [#71](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/71)
+
 # [3.10.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.9.0...v3.10.0) (2026-10-22)
 
 
