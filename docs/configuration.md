@@ -82,10 +82,35 @@ All filter rules AND together. List-valued rules (`tags_contain`, `tags_exclude`
 | Field | Semantics |
 |---|---|
 | `severity_min` | message rank ≥ rule rank. Unknown severities on messages count as `info`. |
-| `match` | exact equality on a `homerun.Message` field, case-insensitive on key + value. Allowed keys: `severity`, `system`, `author`, `title`, `assigneename`, `assigneeaddress`. |
+| `match` | exact equality on a `homerun.Message` field, case-insensitive on key + value. Allowed keys: `severity`, `system`, `author`, `title`, `assigneename`, `assigneeaddress`, and `status` (the alert state, see below). |
 | `tags_contain` | any listed substring appears in `Tags` (case-insensitive). |
 | `tags_exclude` | no listed substring appears in `Tags` (case-insensitive) -- e.g. `[demo=1]` keeps demo traffic out. |
 | `message_contains` | any listed substring appears in `Message`. |
+| `send_resolved` | `false` drops resolved alerts, as Alertmanager's `send_resolved` does. Unset or `true`: they pass. |
+
+### Firing and resolved alerts (#71)
+
+The catcher reads an alert's state from the message: the `status=firing|resolved` tag omni-pitcher's `/pitch/alertmanager` sets, else `resolved` when the message opens with `Resolved: ` (as on `/pitch/grafana`). A message with neither is not an alert: `match: {status: …}` doesn't match it and `send_resolved` lets it pass.
+
+A resolved alert's Teams card is green whatever the severity: the title is prefixed `RESOLVED: `, the message loses its own `Resolved: `, and the time row is labelled `Resolved` (omni-pitcher stamps a resolution with `endsAt`). A firing alert keeps its severity's colour.
+
+Resolutions have severity `success`, below a `severity_min: warning` floor. To get them into the channel the alerts go to, add an output for them:
+
+```yaml
+  - name: teams-alerts
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL}"
+    filters:
+      match: { author: alertmanager }
+      severity_min: warning
+  - name: teams-alerts-resolved
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL}"
+    filters:
+      match: { author: alertmanager, status: resolved }
+```
+
+Without `severity_min`, `send_resolved: false` keeps an output to the firing alerts only.
 
 ### Card facts (msteams)
 

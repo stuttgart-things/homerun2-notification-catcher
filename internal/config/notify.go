@@ -109,6 +109,9 @@ type OutputFilters struct {
 	// tags -- e.g. [demo=1] keeps demo matches out of a results channel.
 	TagsExclude     []string `yaml:"tags_exclude,omitempty"`
 	MessageContains []string `yaml:"message_contains,omitempty"`
+	// SendResolved false drops resolved alerts, as Alertmanager's
+	// send_resolved does (#71). Unset: they pass.
+	SendResolved *bool `yaml:"send_resolved,omitempty"`
 }
 
 // Recognised output types. Centralised so validation and the dispatcher agree.
@@ -125,7 +128,10 @@ var KnownSeverities = []string{"debug", "info", "success", "warning", "critical"
 // matchFields lists the homerun.Message field names that the `match:` map
 // supports. Comparison is case-insensitive on the key. Tags and Message are
 // handled by their own `*_contains` filters (substring rather than exact).
+// status is not a field: the alert state, firing or resolved, read from the
+// message (notify.AlertStatus, #71).
 var matchFields = map[string]struct{}{
+	"status":          {},
 	"severity":        {},
 	"system":          {},
 	"author":          {},

@@ -19,6 +19,8 @@
 #
 # Recognised match fields:
 #   severity, system, author, title, assigneename, assigneeaddress
+#   status: the alert state, firing | resolved (status= tag, or a message
+#   opening with "Resolved: "); `send_resolved: false` drops resolved ones
 # Use tags_contain / message_contains for substring matches on Tags / Message.
 
 # Retry policy of every output; an output's own `retry:` overrides it field
@@ -32,7 +34,7 @@ retry:
 outputs:
   # MS Teams channel — Power Automate "post-message-in-chat" webhook.
   # Fires for warning+ messages from the kubernetes system tagged with infra
-  # or storage. Card colour follows severity.
+  # or storage. Card colour follows severity; a resolved alert's card is green.
   - name: teams-platform-alerts
     type: msteams
     webhook_url: "${TEAMS_WEBHOOK_URL}"

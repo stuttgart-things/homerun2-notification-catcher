@@ -214,14 +214,18 @@ type FiltersView struct {
 	Match           map[string]string `json:"match,omitempty"`
 	TagsContain     []string          `json:"tagsContain,omitempty"`
 	TagsExclude     []string          `json:"tagsExclude,omitempty"`
+	SendResolved    *bool             `json:"sendResolved,omitempty"`
 	MessageContains []string          `json:"messageContains,omitempty"`
 }
 
 // Empty reports whether no filter is set: the output takes every message.
 func (f FiltersView) Empty() bool {
 	return f.SeverityMin == "" && len(f.Match) == 0 && len(f.TagsContain) == 0 &&
-		len(f.TagsExclude) == 0 && len(f.MessageContains) == 0
+		len(f.TagsExclude) == 0 && len(f.MessageContains) == 0 && f.SendResolved == nil
 }
+
+// DropsResolved reports send_resolved: false.
+func (f FiltersView) DropsResolved() bool { return f.SendResolved != nil && !*f.SendResolved }
 
 // MatchPairs lists Match as "key=value", sorted, for the page.
 func (f FiltersView) MatchPairs() []string {
@@ -261,6 +265,7 @@ func (s *Server) view() ConfigView {
 				Match:           o.Filters.Match,
 				TagsContain:     o.Filters.TagsContain,
 				TagsExclude:     o.Filters.TagsExclude,
+				SendResolved:    o.Filters.SendResolved,
 				MessageContains: o.Filters.MessageContains,
 			},
 			CardFacts: o.Card.Facts,
