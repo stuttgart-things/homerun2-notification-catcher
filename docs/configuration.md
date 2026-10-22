@@ -88,6 +88,29 @@ All filter rules AND together. List-valued rules (`tags_contain`, `tags_exclude`
 | `message_contains` | any listed substring appears in `Message`. |
 | `send_resolved` | `false` drops resolved alerts, as Alertmanager's `send_resolved` does. Unset or `true`: they pass. |
 
+### Fallback outputs (#74)
+
+`fallback: true` makes an output a catch-all: it takes a message that passes its own filters only when **no other, non-fallback output matched** it. "Every error nobody else routed", without repeating each route as an exclusion:
+
+```yaml
+  - name: teams-flux-errors
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL}"
+    filters:
+      match: { system: flux }
+      severity_min: error
+  - name: teams-platform-alerts         # errors from everything else
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL}"
+    fallback: true
+    filters:
+      severity_min: error
+```
+
+A flux error goes to `teams-flux-errors` only; an error from any other system goes to `teams-platform-alerts`. A covered fallback reports `filtered` (in the event log, the metrics and the `dispatched` log line); `smoke` prints `SKIPPED (fallback: another output matched)`. Fallbacks do not cover each other.
+
+"Matched" counts every non-fallback output whose filters pass, including a filterless catch-all such as the sink's `/inbox` webhook: beside one of those, a fallback never sends. Make the inbox a fallback too if it should only get what nothing else took.
+
 ### Firing and resolved alerts (#71)
 
 The catcher reads an alert's state from the message: the `status=firing|resolved` tag omni-pitcher's `/pitch/alertmanager` sets, else `resolved` when the message opens with `Resolved: ` (as on `/pitch/grafana`). A message with neither is not an alert: `match: {status: …}` doesn't match it and `send_resolved` lets it pass.

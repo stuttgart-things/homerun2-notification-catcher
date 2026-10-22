@@ -312,6 +312,8 @@ func printSmokeResults(results []notify.DispatchResult) error {
 	var failed int
 	for _, r := range results {
 		switch {
+		case r.Covered:
+			fmt.Printf("- %s: SKIPPED (fallback: another output matched)\n", r.Output)
 		case r.Skipped:
 			fmt.Printf("- %s: SKIPPED (filters did not match)\n", r.Output)
 		case r.DryRun:

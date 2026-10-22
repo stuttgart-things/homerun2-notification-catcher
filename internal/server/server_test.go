@@ -22,7 +22,7 @@ func testConfig() *config.NotifyConfig {
 			Card:    config.CardConfig{Facts: []config.CardFactConfig{{Title: "Cluster", Tag: "cluster"}}}},
 		{Name: "pager", Type: config.OutputTypeWebhook, URL: "https://user:pw@hooks.example/notify",
 			Method: "PUT", Headers: map[string]string{"Authorization": "Bearer t0ken-value"},
-			Filters: config.OutputFilters{SendResolved: new(bool)}},
+			Filters: config.OutputFilters{SendResolved: new(bool)}, Fallback: true},
 	}}
 }
 
@@ -117,7 +117,7 @@ func TestConfigRedacted(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("index: %d", code)
 	}
-	for _, want := range []string{"teams-platform", "severity ≥</b> warning", "system=kubernetes", "Cluster <b>← tag cluster", "PUT https://REDACTED@hooks.example/notify", "no resolved", "messages", "redis:6379"} {
+	for _, want := range []string{"teams-platform", "severity ≥</b> warning", "system=kubernetes", "Cluster <b>← tag cluster", "PUT https://REDACTED@hooks.example/notify", "no resolved", "fallback</span>", "messages", "redis:6379"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)
 		}
