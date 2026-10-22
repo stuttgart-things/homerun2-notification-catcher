@@ -1,3 +1,10 @@
+# [3.12.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.11.0...v3.12.0) (2026-10-22)
+
+
+### Features
+
+* **notify:** fallback outputs -- a catch-all for what no other output routed ([2cb482d](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/2cb482d2ecf0c0e7b7b2de89848a5de04a03eb9c)), closes [#74](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/74)
+
 # [3.11.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.10.0...v3.11.0) (2026-10-22)
 
 
