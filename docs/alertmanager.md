@@ -4,11 +4,11 @@ End-to-end wiring of cluster alerts into the catcher:
 
 ```
 Alertmanager ─ webhook ─▶ omni-pitcher  ─▶ Redis stream "alerts" ─▶ notification-catcher ─▶ Teams
-              (POST          /pitch/grafana       (consumer-group)              (Adaptive Card)
+              (POST          /pitch/alertmanager  (consumer-group)              (Adaptive Card)
               JSON v4)
 ```
 
-omni-pitcher's `/pitch/grafana` endpoint accepts Alertmanager's webhook v4 payload directly — the schemas are field-compatible (`alerts[].{labels,annotations,startsAt,endsAt,generatorURL,status,fingerprint}` plus `receiver`, `commonLabels`, `commonAnnotations`). A dedicated `/pitch/alertmanager` endpoint with a cleaner mapping is Phase 2 (#3).
+omni-pitcher's `/pitch/alertmanager` endpoint (omni-pitcher ≥ v2.4.0, homerun2-omni-pitcher#210) takes Alertmanager's webhook v4 payload and pitches one message per alert (`?group=true`: one per notification group). Each message carries `status=firing|resolved` and `fingerprint=<fp>` as tags. Older setups point the receiver at `/pitch/grafana`, which accepts the same payload with a coarser mapping (see [the end of this page](#older-omni-pitcher-pitchgrafana)).
 
 ## Pieces
 
@@ -16,7 +16,7 @@ The catcher itself needs no code changes for #9 — it already consumes the `ale
 
 | Config | Lives in |
 |---|---|
-| `ROUTES_CONFIG` for omni-pitcher (route `/pitch/grafana` → `alerts`) | flux repo, as the env value applied to the omni-pitcher Deployment |
+| `ROUTES_CONFIG` for omni-pitcher (route `/pitch/alertmanager` → `alerts`) | flux repo, as the env value applied to the omni-pitcher Deployment |
 | `kube-prometheus-stack` Alertmanager receiver `msteams` | flux repo, as Helm values for the kube-prometheus-stack `HelmRelease` |
 
 ## omni-pitcher routing
@@ -33,14 +33,14 @@ streams:
 default_stream: messages
 
 routes:
-  # Alertmanager (and Grafana) webhooks land on this endpoint —
+  # Alertmanager webhooks land on this endpoint —
   # send everything to the dedicated `alerts` stream.
   - match:
-      endpoint: /pitch/grafana
+      endpoint: /pitch/alertmanager
     stream: alerts
 ```
 
-Order matters — earlier rules win. Put the `/pitch/grafana` → `alerts` rule before any catch-all.
+Order matters — earlier rules win. Put the `/pitch/alertmanager` → `alerts` rule before any catch-all. A rule on `/pitch/grafana` does **not** match the new endpoint; when moving the receiver over, add the rule (keep the Grafana one if Grafana still pitches there).
 
 ## Alertmanager receiver
 
@@ -52,7 +52,7 @@ alertmanager:
     receivers:
       - name: msteams
         webhook_configs:
-          - url: http://homerun2-omni-pitcher.homerun2.svc.cluster.local:8080/pitch/grafana
+          - url: http://homerun2-omni-pitcher.homerun2.svc.cluster.local:8080/pitch/alertmanager
             send_resolved: true
             http_config:
               authorization:
@@ -70,20 +70,24 @@ If the pitcher's bearer token check is disabled (`AUTH_TOKEN` unset on omni-pitc
 
 ## Field mapping
 
-What omni-pitcher's `/pitch/grafana` does with an Alertmanager payload:
+What omni-pitcher's `/pitch/alertmanager` does with each alert:
 
 | `homerun.Message` field | Source in Alertmanager payload | Notes |
 |---|---|---|
-| `Title` | `alerts[i].labels.alertname` | falls back to literal `"Grafana Alert"` |
-| `Message` | `alerts[i].annotations.summary` | falls back to `annotations.description`, then `"Alert X is Y"` |
-| `Severity` | `alerts[i].labels.severity` for `firing`; `info` for `resolved` | mapped via `mapGrafanaSeverity` — `critical`/`page` → `critical`, `warning`/`warn` → `warning`, otherwise pass-through |
-| `Author` | constant `"grafana"` | cosmetic — Phase 2 `/pitch/alertmanager` endpoint will set `"alertmanager"` |
-| `Timestamp` | `alerts[i].startsAt` | falls back to `time.Now()` if missing |
+| `Title` | `alerts[i].labels.alertname` | then `commonLabels.alertname` |
+| `Message` | `alerts[i].annotations.summary` | then `description`, then `commonAnnotations`, then `"Alert X is Y"`; `Resolved: ` prefix when resolved |
+| `Severity` | `alerts[i].labels.severity` for `firing`; `success` for `resolved` | `critical`/`page` → `critical`, `warning`/`warn` → `warning`, otherwise pass-through |
+| `Author` | constant `"alertmanager"` | |
+| `Timestamp` | `startsAt`; `endsAt` when resolved | falls back to `time.Now()` |
 | `System` | top-level `receiver` | e.g. `msteams` |
-| `Tags` | every `alerts[i].labels` key except `alertname` and `severity`, joined `k=v,k=v` | |
-| `Url` | `alerts[i].generatorURL` | (`dashboardURL` / `panelURL` are Grafana-only — empty for Alertmanager) |
+| `Tags` | `status=<firing\|resolved>,fingerprint=<fp>`, then the other labels sorted, `k=v,k=v` | a comma in a label value becomes `;` |
+| `Url` | `alerts[i].generatorURL` | then `externalURL` |
 
-The values feed `internal/notify/filter.go` so the catcher's YAML routing can target Alertmanager alerts by `severity_min`, `match.system: msteams`, or `tags_contain: [namespace=prod, …]`.
+With `?group=true` on the receiver URL, one message per notification: the common labels and annotations, the highest severity of the firing alerts, tags `status=…,alerts=<n>,…` and `(N alerts)` after the message.
+
+The values feed `internal/notify/filter.go` so the catcher's YAML routing can target Alertmanager alerts by `severity_min`, `match.author: alertmanager`, `match.system: msteams`, or `tags_contain: [namespace=prod, …]`.
+
+**Resolutions and `severity_min`:** a resolved alert has severity `success`, below `warning`, so an output with `severity_min: warning` drops it. To get resolutions into a channel, give it a second output without `severity_min` that matches them, e.g. `tags_contain: [status=resolved]` plus `match.author: alertmanager` (pairing firing and resolved cards is #71).
 
 ## Notification-catcher config
 
@@ -143,7 +147,7 @@ kubectl -n homerun2 exec deploy/homerun2-omni-pitcher -- \
   }' \
     --header="Authorization: Bearer ${OMNI_PITCHER_TOKEN}" \
     --header="Content-Type: application/json" \
-    http://localhost:8080/pitch/grafana
+    http://localhost:8080/pitch/alertmanager
 
 # 2. Confirm the catcher picked it up
 kubectl -n homerun2 logs deploy/homerun2-notification-catcher --tail=20 | grep SmokeTest
@@ -153,11 +157,13 @@ kubectl -n homerun2 logs deploy/homerun2-notification-catcher --tail=20 | grep S
 
 For a fuller test, fire a real Prometheus alert (temporarily lower a threshold rule) and watch the same chain.
 
-## Why not a dedicated `/pitch/alertmanager`?
+## Older omni-pitcher: `/pitch/grafana`
 
-Phase 2 (#3) introduces one. Until then, `/pitch/grafana` is good enough — the only payload differences are:
+Before the dedicated endpoint, the receiver pointed at `/pitch/grafana` (with the routing rule on `endpoint: /pitch/grafana`), which accepts the same v4 payload — the schemas are field-compatible. It still works; the differences to `/pitch/alertmanager`:
 
-- `Author` is hardcoded to `"grafana"` (cosmetic)
-- `payload.Title` / `payload.Message` aren't set by Alertmanager, but the handler already falls back to per-alert label/annotation lookups
+- `Author` is `"grafana"`, the title falls back to `"Grafana Alert"`
+- no `status=` / `fingerprint=` tags, labels unsorted, so a consumer cannot tell a resolution by its tags or pair it with its alert
+- `Timestamp` is always `startsAt`, also for a resolution
+- no `?group=true`
 
-So no functional gap, just naming. Bringing Phase 2 forward would buy `Author: "alertmanager"` and clearer log lines.
+Severity (`success` when resolved) and the `Resolved: ` prefix are the same.

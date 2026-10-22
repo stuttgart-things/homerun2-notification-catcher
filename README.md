@@ -6,12 +6,12 @@ it reads `homerun.Message`s from a Redis Stream (via a consumer group) and
 and any generic JSON webhook today; Slack and email to follow.
 
 ```
-Alertmanager ─▶ omni-pitcher /pitch/grafana ─▶ Redis stream "alerts"
-                                                     │
-                                          notification-catcher
-                                                     │
-                                       ┌─────────────┼─────────────┐
-                                       ▶ MS Teams    ▶ Slack        ▶ email
+Alertmanager ─▶ omni-pitcher /pitch/alertmanager ─▶ Redis stream "alerts"
+                                                          │
+                                               notification-catcher
+                                                          │
+                                            ┌─────────────┼─────────────┐
+                                            ▶ MS Teams    ▶ Slack        ▶ email
 ```
 
 Outbound counterpart to the existing `*-catcher` consumers: instead of logging
@@ -73,7 +73,7 @@ kubectl -n homerun2 exec deploy/homerun2-omni-pitcher -- \
   }' \
     --header="Authorization: Bearer ${OMNI_PITCHER_AUTH_TOKEN}" \
     --header="Content-Type: application/json" \
-    http://localhost:8080/pitch/grafana
+    http://localhost:8080/pitch/alertmanager
 ```
 
 Then tail the catcher:
