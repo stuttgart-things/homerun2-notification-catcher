@@ -200,6 +200,7 @@ type OutputView struct {
 	Filters   FiltersView             `json:"filters"`
 	CardFacts []config.CardFactConfig `json:"cardFacts,omitempty"`
 	Retry     RetryView               `json:"retry"`
+	Fallback  bool                    `json:"fallback,omitempty"`
 }
 
 // RetryView is an output's resolved retry policy (#68).
@@ -269,6 +270,7 @@ func (s *Server) view() ConfigView {
 				MessageContains: o.Filters.MessageContains,
 			},
 			CardFacts: o.Card.Facts,
+			Fallback:  o.Fallback,
 		}
 		rp := s.opts.Config.RetryFor(o)
 		ov.Retry = RetryView{Attempts: rp.Attempts, Backoff: rp.Backoff.String()}

@@ -59,13 +59,17 @@ type boundOutput struct {
 	filters  config.OutputFilters
 	notifier Notifier
 	retry    config.RetryPolicy
+	fallback bool
 }
 
 // DispatchResult records what happened for one output for one message. Used by
 // the smoke subcommand and may be useful for tests / future metrics.
 type DispatchResult struct {
 	Output  string
-	Skipped bool  // filters didn't match
+	Skipped bool // filters didn't match, or Covered
+	// Covered: a fallback output whose filters matched, left out because a
+	// non-fallback output matched the message (#74). Skipped is set too.
+	Covered bool
 	DryRun  bool  // filters matched but Send was skipped (Dispatcher.DryRun=true)
 	Err     error // nil on success/skipped/dry-run, non-nil if Send failed
 	// Attempts counts the sends, retries included; 0 when filtered or dry-run.
@@ -107,6 +111,7 @@ func NewDispatcher(cfg *config.NotifyConfig, httpClient *http.Client) (*Dispatch
 			filters:  oc.Filters,
 			notifier: n,
 			retry:    cfg.RetryFor(oc),
+			fallback: oc.Fallback,
 		})
 	}
 	return &Dispatcher{outputs: outputs, stop: make(chan struct{})}, nil
@@ -123,6 +128,7 @@ func NewDispatcherWithNotifiers(entries ...DispatcherEntry) *Dispatcher {
 			filters:  e.Filters,
 			notifier: e.Notifier,
 			retry:    e.Retry,
+			fallback: e.Fallback,
 		})
 	}
 	return &Dispatcher{outputs: outputs, stop: make(chan struct{})}
@@ -134,6 +140,7 @@ type DispatcherEntry struct {
 	Filters  config.OutputFilters
 	Notifier Notifier
 	Retry    config.RetryPolicy // zero: one attempt, no retry
+	Fallback bool
 }
 
 // Dispatch sends msg to every output whose filters match. The call is
@@ -153,12 +160,25 @@ type DispatcherEntry struct {
 // Dispatcher.DryRun is true, matching outputs skip the Notifier.Send call and
 // log "dry-run: would send" at INFO instead. Skipped outputs (filters didn't
 // match) are reported the same way in both modes.
+//
+// A fallback output takes a matching message only when no non-fallback
+// output matched it (#74); otherwise its result is Covered.
 func (d *Dispatcher) Dispatch(ctx context.Context, msg models.CaughtMessage) []DispatchResult {
 	results := make([]DispatchResult, len(d.outputs))
+	matched := make([]bool, len(d.outputs))
+	routed := false
+	for i, o := range d.outputs {
+		matched[i] = Matches(o.filters, msg.Message)
+		routed = routed || (matched[i] && !o.fallback)
+	}
 	var wg sync.WaitGroup
 	for i, o := range d.outputs {
-		if !Matches(o.filters, msg.Message) {
+		if !matched[i] {
 			results[i] = DispatchResult{Output: o.name, Skipped: true}
+			continue
+		}
+		if o.fallback && routed {
+			results[i] = DispatchResult{Output: o.name, Skipped: true, Covered: true}
 			continue
 		}
 		if d.DryRun {

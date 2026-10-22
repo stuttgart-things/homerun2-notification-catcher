@@ -79,6 +79,10 @@ type OutputConfig struct {
 	Card CardConfig `yaml:"card,omitempty"`
 	// Retry overrides the top-level retry policy for this output.
 	Retry RetryConfig `yaml:"retry,omitempty"`
+	// Fallback makes the output a catch-all: it sends a message that passes
+	// its filters only when no other, non-fallback output matched it --
+	// "every error nobody else routed" without repeating each route (#74).
+	Fallback bool `yaml:"fallback,omitempty"`
 }
 
 // CardConfig customises the Teams card. Facts, when set, replaces the default

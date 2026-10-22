@@ -118,7 +118,7 @@
             <tbody>
             {{range .Outputs}}
                 <tr>
-                    <td><strong>{{.Name}}</strong></td>
+                    <td><strong>{{.Name}}</strong>{{if .Fallback}} <span class="f hint">fallback</span>{{end}}</td>
                     <td><span class="kind kind-{{.Type}}">{{.Type}}</span></td>
                     <td><code>{{if .Method}}{{.Method}} {{end}}{{.Target}}</code>{{range .Headers}}<span class="f hint">{{.}}</span>{{end}}</td>
                     <td>

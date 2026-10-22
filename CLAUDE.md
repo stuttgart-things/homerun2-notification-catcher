@@ -75,6 +75,8 @@ Filter semantics (all AND together):
 | `message_contains` | any listed substring appears in `Message` |
 | `send_resolved` | `false` drops resolved alerts |
 
+Fallback outputs (#74): `fallback: true` sends a message that passes the output's filters only when no non-fallback output matched it (`DispatchResult.Covered`, reported as `filtered`); fallbacks don't cover each other.
+
 Firing vs. resolved (#71): `notify.AlertStatus` reads the `status=` tag (omni-pitcher `/pitch/alertmanager`), else a `Resolved: ` message prefix (`/pitch/grafana`). A resolved card is green with a `RESOLVED: ` title and a `Resolved` time row.
 
 Per-output failures are logged but don't block the rest of the fan-out. See `notify.example.yaml` for a full example.

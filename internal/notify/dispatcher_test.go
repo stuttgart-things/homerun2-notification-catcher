@@ -231,3 +231,41 @@ func TestDispatcher_OnDispatch(t *testing.T) {
 		t.Errorf("dry run: %s", r)
 	}
 }
+
+// A fallback output takes what no other output matched, and only that (#74).
+func TestDispatcher_FallbackTakesTheUnrouted(t *testing.T) {
+	flux, catchAll := &stubNotifier{}, &stubNotifier{}
+	d := NewDispatcherWithNotifiers(
+		DispatcherEntry{Name: "flux", Filters: config.OutputFilters{SeverityMin: "error", Match: map[string]string{"system": "flux"}}, Notifier: flux},
+		DispatcherEntry{Name: "errors", Filters: config.OutputFilters{SeverityMin: "error"}, Notifier: catchAll, Fallback: true},
+	)
+
+	r := d.Dispatch(context.Background(), caught(homerun.Message{System: "flux", Severity: "error"}))
+	if flux.called != 1 || catchAll.called != 0 || !r[1].Covered || !r[1].Skipped || r[1].Result() != ResultFiltered {
+		t.Fatalf("flux error: flux %d, fallback %d, result %+v; want flux only", flux.called, catchAll.called, r[1])
+	}
+
+	r = d.Dispatch(context.Background(), caught(homerun.Message{System: "k8s-machinery", Severity: "error"}))
+	if flux.called != 1 || catchAll.called != 1 || r[1].Covered || r[1].Result() != ResultSent {
+		t.Fatalf("other error: fallback %d, result %+v; want the fallback", catchAll.called, r[1])
+	}
+
+	// Its own filters still apply.
+	r = d.Dispatch(context.Background(), caught(homerun.Message{System: "k8s-machinery", Severity: "info"}))
+	if catchAll.called != 1 || r[1].Covered || !r[1].Skipped {
+		t.Fatalf("info: result %+v; want filtered by the fallback's own filters", r[1])
+	}
+}
+
+// Two fallbacks do not cover each other.
+func TestDispatcher_FallbacksDoNotCoverEachOther(t *testing.T) {
+	a, b := &stubNotifier{}, &stubNotifier{}
+	d := NewDispatcherWithNotifiers(
+		DispatcherEntry{Name: "a", Notifier: a, Fallback: true},
+		DispatcherEntry{Name: "b", Notifier: b, Fallback: true},
+	)
+	d.Dispatch(context.Background(), caught(homerun.Message{Title: "x"}))
+	if a.called != 1 || b.called != 1 {
+		t.Fatalf("a %d, b %d; want both", a.called, b.called)
+	}
+}

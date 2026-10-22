@@ -17,6 +17,9 @@
 # Severity rank (low → high):
 #   debug < info < success < warning < critical = error
 #
+# `fallback: true` on an output: it sends only messages that no other
+# (non-fallback) output matched -- a catch-all for whatever is not routed.
+#
 # Recognised match fields:
 #   severity, system, author, title, assigneename, assigneeaddress
 #   status: the alert state, firing | resolved (status= tag, or a message
