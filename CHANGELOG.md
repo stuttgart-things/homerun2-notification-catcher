@@ -1,3 +1,10 @@
+# [3.13.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.12.0...v3.13.0) (2026-10-22)
+
+
+### Features
+
+* replay the dead-letter stream, Dead letter tab, pending gauge ([e9ad899](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/e9ad899d540c1ddb648dbef9afe3a18fc4f422d3)), closes [#70](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/70)
+
 # [3.12.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.11.0...v3.12.0) (2026-10-22)
 
 
