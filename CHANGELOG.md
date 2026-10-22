@@ -1,3 +1,10 @@
+# [3.10.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.9.0...v3.10.0) (2026-10-22)
+
+
+### Features
+
+* **notify:** retry failed sends with backoff, park exhausted ones in a dead-letter stream ([dde4dd4](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/dde4dd4dcd99ee537a2db159a7d3adf887ed957f)), closes [#68](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/68)
+
 # [3.9.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.8.0...v3.9.0) (2026-10-21)
 
 
