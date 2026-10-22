@@ -17,7 +17,7 @@ homerun2-notification-catcher — Go consumer for the homerun2 pipeline. Reads `
 ## Architecture
 
 ```
-producer (omni-pitcher /pitch, /pitch/grafana, …)
+producer (omni-pitcher /pitch, /pitch/grafana, /pitch/alertmanager, …)
         │
         ▼
 Redis stream "alerts" (or any stream — see REDIS_STREAM[S])
@@ -206,4 +206,4 @@ task build-scan-image-ko
 ## Reference Projects
 
 - `homerun2-core-catcher` — scaffold source; consumer group, ko, KCL, Dagger CI, semantic-release patterns
-- `homerun2-omni-pitcher` — producer that feeds the `alerts` stream via `/pitch/grafana`
+- `homerun2-omni-pitcher` — producer that feeds the `alerts` stream via `/pitch/alertmanager` (Alertmanager, ≥ v2.4.0) and `/pitch/grafana`
