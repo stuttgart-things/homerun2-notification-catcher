@@ -91,7 +91,7 @@
             </a>
         </div>
         <div class="actions">
-            <a href="{{.BasePath}}/api/{{.Page}}{{qs .Token}}" target="_blank">{{if eq .Page "events"}}Events{{else}}Config{{end}} JSON</a>
+            <a href="{{.BasePath}}/api/{{.Page}}{{qs .Token}}" target="_blank">{{if eq .Page "events"}}Events{{else if eq .Page "dead-letter"}}Dead letter{{else}}Config{{end}} JSON</a>
             <a href="/metrics" target="_blank">Metrics</a>
         </div>
     </div>
@@ -99,6 +99,7 @@
         <nav class="tabs" aria-label="Views">
             <a href="{{.BasePath}}/{{qs .Token}}"{{if eq .Page "config"}} class="active"{{end}}>Config</a>
             <a href="{{.BasePath}}/events{{qs .Token}}"{{if eq .Page "events"}} class="active"{{end}}>Events</a>
+            <a href="{{.BasePath}}/dead-letter{{qs .Token}}"{{if eq .Page "dead-letter"}} class="active"{{end}}>Dead letter</a>
             {{if eq .Page "events"}}<label class="right"><input type="checkbox" id="live" checked> live</label>{{end}}
         </nav>
         {{if eq .Page "config"}}
@@ -139,7 +140,7 @@
             </tbody>
         </table>
         </div>
-        {{else}}
+        {{else if eq .Page "events"}}
         <div class="filters">
             <a href="{{.BasePath}}/events{{qs .Token}}"{{if not .Query.Result}} class="active"{{end}}>all</a>
             {{range .Results}}<a href="{{$.BasePath}}/events{{qs $.Token "result" .}}"{{if eq . $.Query.Result}} class="active"{{end}}>{{.}}</a>{{end}}
@@ -169,6 +170,41 @@
                 if (document.getElementById("live").checked && document.visibilityState === "visible") location.reload();
             }, 10000);
         </script>
+        {{else}}
+        {{with .DeadLetter}}
+        {{if not .Stream}}
+        <p class="warn">The dead letter is off (<code>DEAD_LETTER_STREAM=off</code>): sends that fail after their retries are only logged.</p>
+        {{else}}
+        <dl class="status">
+            <div><dt>Stream</dt><dd><code>{{.Stream}}</code></dd></div>
+            <div><dt>Pending</dt><dd>{{if .Error}}<span class="bad">{{.Error}}</span>{{else if .Pending}}<span class="warn">{{.Pending}}</span>{{else}}<span class="ok">0</span>{{end}}</dd></div>
+        </dl>
+        <p class="hint">Sends that still failed after their retries, newest first{{if gt .Pending (len .Entries)}} (the last {{len .Entries}}){{end}}. Read-only: a replay sends them again through the output's notifier, with the config and card of now, and deletes each one that goes through.{{if $.SinkURL}} The objectId opens the notification in the sink.{{end}}</p>
+        {{if .Outputs}}
+        <h2>Replay</h2>
+        <p class="hint">In the catcher's pod, which has the config and the Redis settings. <code>--dry-run</code> lists what would be sent; <code>--object-id</code> and <code>--since 24h</code> narrow it down.</p>
+        {{range .Outputs}}<pre><code>kubectl exec deploy/&lt;catcher&gt; -- {{$.ReplayBinary}} replay --output {{.Output}} --dry-run</code></pre><p class="hint">{{.Count}} {{if eq .Count 1}}entry{{else}}entries{{end}} for <strong>{{.Output}}</strong> shown</p>{{end}}
+        {{end}}
+        <div class="overflow-auto">
+        <table>
+            <thead><tr><th>Failed</th><th>Output</th><th>Message</th><th>Attempts</th><th>Error</th></tr></thead>
+            <tbody>
+            {{range .Entries}}
+                <tr>
+                    <td style="white-space:nowrap">{{.FailedAt.Format "2006-01-02 15:04:05"}}<span class="oid">{{.ID}}</span></td>
+                    <td><strong>{{.Output}}</strong></td>
+                    <td>{{.Message.Title}} <span class="sev-{{lower .Message.Severity}}">{{.Message.Severity}}</span>{{if .ObjectID}}{{if $.SinkURL}}<a class="oid" href="{{$.SinkURL}}/?objectId={{.ObjectID}}#notifications" target="_blank">{{.ObjectID}}</a>{{else}}<span class="oid">{{.ObjectID}}</span>{{end}}{{end}}</td>
+                    <td>{{.Attempts}}</td>
+                    <td><code>{{.Error}}</code></td>
+                </tr>
+            {{else}}
+                <tr><td colspan="5" class="muted">{{if .Error}}Could not read the stream.{{else}}Nothing parked: every send went through.{{end}}</td></tr>
+            {{end}}
+            </tbody>
+        </table>
+        </div>
+        {{end}}
+        {{end}}
         {{end}}
     </main>
     <footer class="build-footer">

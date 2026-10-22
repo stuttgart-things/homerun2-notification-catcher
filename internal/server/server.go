@@ -78,8 +78,9 @@ type Options struct {
 type Server struct {
 	opts Options
 
-	mu   sync.RWMutex
-	ping func(context.Context) error
+	mu         sync.RWMutex
+	ping       func(context.Context) error
+	deadLetter DeadLetterReader
 
 	events *events
 }
@@ -110,6 +111,8 @@ func (s *Server) Handler() http.Handler {
 	app.HandleFunc("GET /api/config", webui.Auth(s.opts.Token, s.handleConfigJSON))
 	app.HandleFunc("GET /api/events", webui.Auth(s.opts.Token, s.handleEventsJSON))
 	app.HandleFunc("GET /events", webui.Auth(s.opts.Token, s.handleEventsPage))
+	app.HandleFunc("GET /api/dead-letter", webui.Auth(s.opts.Token, s.handleDeadLetterJSON))
+	app.HandleFunc("GET /dead-letter", webui.Auth(s.opts.Token, s.handleDeadLetterPage))
 	app.Handle("GET /static/", webui.Static())
 	app.HandleFunc("GET /{$}", webui.Auth(s.opts.Token, s.handleIndex))
 
@@ -338,7 +341,7 @@ func (s *Server) handleConfigJSON(w http.ResponseWriter, _ *http.Request) {
 }
 
 type indexData struct {
-	Page     string // config | events
+	Page     string // config | events | dead-letter
 	BasePath string
 	// Token is passed on in links when the page was opened with ?token=.
 	Token string
@@ -354,6 +357,10 @@ type indexData struct {
 	Query   EventQuery
 	SinkURL string
 	Results []string
+
+	// dead-letter page
+	DeadLetter   DeadLetterView
+	ReplayBinary string
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

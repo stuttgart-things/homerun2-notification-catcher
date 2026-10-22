@@ -324,3 +324,56 @@ func TestRedisDeadLetter_Park(t *testing.T) {
 		t.Errorf("message %v: %+v %v", v["message"], payload, err)
 	}
 }
+
+// What Park writes, Range and Recent read back; Delete removes it (#70).
+func TestRedisDeadLetter_ReadBack(t *testing.T) {
+	f := newFakeRedis(t)
+	c, err := newRedisCatcher(f.client, f.client, "", []string{testStream}, testGroup, "test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dl := c.DeadLetter("dead", 100)
+	ctx := context.Background()
+	at := time.Date(2026, 10, 22, 7, 45, 13, 0, time.UTC)
+	for i, out := range []string{"teams", "hook", "teams"} {
+		if err := dl.Park(ctx, notify.DeadLetterEntry{
+			Output:   out,
+			Message:  models.CaughtMessage{Message: homerun.Message{Title: fmt.Sprintf("m%d", i), Severity: "warning"}, ObjectID: fmt.Sprintf("obj-%d", i), StreamID: "1-0"},
+			Err:      errors.New("teams: webhook returned 503"),
+			Attempts: 3,
+			At:       at.Add(time.Duration(i) * time.Minute),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	all, err := dl.Range(ctx, time.Time{})
+	if err != nil || len(all) != 3 {
+		t.Fatalf("Range: %d %v", len(all), err)
+	}
+	e := all[0]
+	if e.Output != "teams" || e.ObjectID != "obj-0" || e.StreamID != "1-0" || e.Attempts != 3 || !e.FailedAt.Equal(at) ||
+		e.Error != "teams: webhook returned 503" || e.Message.Title != "m0" || e.Message.Severity != "warning" || e.ID == "" {
+		t.Errorf("entry %+v", e)
+	}
+	if got := e.Caught(); got.ObjectID != "obj-0" || got.Title != "m0" {
+		t.Errorf("Caught %+v", got)
+	}
+
+	recent, err := dl.Recent(ctx, 2)
+	if err != nil || len(recent) != 2 || recent[0].ObjectID != "obj-2" || recent[1].ObjectID != "obj-1" {
+		t.Fatalf("Recent: %+v %v", recent, err)
+	}
+	// Since compares with the stream ids, which are the park time.
+	future, err := dl.Range(ctx, time.Now().Add(time.Hour))
+	if err != nil || len(future) != 0 {
+		t.Errorf("Range(future): %d %v", len(future), err)
+	}
+
+	if err := dl.Delete(ctx, e.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := dl.Len(ctx); err != nil || n != 2 {
+		t.Errorf("Len after Delete: %d %v", n, err)
+	}
+}

@@ -126,9 +126,10 @@ YAML-driven filters, env-interp for secrets, dry-run mode, KCL manifests,
 Flux component, Alertmanager wiring all in place.
 
 Phase 2 (#3) is under way: retries with backoff and a dead-letter stream
-are in (#68, see [Configuration](docs/configuration.md#retries-and-dead-letter));
-firing/resolved styling and a dedicated `/pitch/alertmanager` endpoint are
-next. Phase 3 (#4 — Slack / email / per-assignee routing) layers on top.
+(#68) with `replay` and a Dead letter tab (#70, see
+[Configuration](docs/configuration.md#retries-and-dead-letter)), firing vs.
+resolved cards (#71), fallback outputs (#74) and omni-pitcher's
+`/pitch/alertmanager` are in. Phase 3 (#4 — Slack / email / per-assignee routing) layers on top.
 
 ## Built from
 
