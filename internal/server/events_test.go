@@ -114,3 +114,17 @@ func TestEventsPage(t *testing.T) {
 		t.Errorf("metrics (open, at the root): %d %s", code, body)
 	}
 }
+
+func TestEventsThrottled(t *testing.T) {
+	e := newEvents(10, []string{"teams-platform"})
+	e.record(record("1", "a", notify.DispatchResult{Output: "teams-platform", Throttled: true}))
+	got := e.list(EventQuery{Result: notify.ResultThrottled})
+	if len(got) != 1 || !got[0].Routed || got[0].Failed {
+		t.Fatalf("throttled: %+v", got)
+	}
+	var b strings.Builder
+	e.writeMetrics(&b)
+	if !strings.Contains(b.String(), `notification_catcher_dispatch_total{output="teams-platform",result="throttled"} 1`) {
+		t.Errorf("metrics lack the throttled series:\n%s", b.String())
+	}
+}

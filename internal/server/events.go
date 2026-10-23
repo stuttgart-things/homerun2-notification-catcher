@@ -34,7 +34,7 @@ type Event struct {
 // OutputResult is what one output did with the message.
 type OutputResult struct {
 	Output string `json:"output"`
-	Result string `json:"result"` // sent | failed | filtered | dry-run
+	Result string `json:"result"` // sent | failed | filtered | dry-run | throttled
 	Error  string `json:"error,omitempty"`
 	// Attempts counts the sends, retries included (#68); 0 when filtered.
 	Attempts     int  `json:"attempts,omitempty"`
@@ -182,7 +182,7 @@ func (e *events) writeMetrics(w io.Writer) {
 		}
 		return keys[i][1] < keys[j][1]
 	})
-	_, _ = io.WriteString(w, "# HELP notification_catcher_dispatch_total Messages per output and result (sent, failed, filtered, dry-run).\n")
+	_, _ = io.WriteString(w, "# HELP notification_catcher_dispatch_total Messages per output and result (sent, failed, filtered, dry-run, throttled).\n")
 	_, _ = io.WriteString(w, "# TYPE notification_catcher_dispatch_total counter\n")
 	for _, k := range keys {
 		_, _ = fmt.Fprintf(w, "notification_catcher_dispatch_total{output=\"%s\",result=\"%s\"} %d\n",
@@ -215,7 +215,7 @@ func (s *Server) eventQuery(r *http.Request) (EventQuery, error) {
 	v := r.URL.Query()
 	q := EventQuery{Result: v.Get("result"), ObjectID: strings.TrimSpace(v.Get("objectId"))}
 	switch q.Result {
-	case "", "unrouted", notify.ResultSent, notify.ResultFailed, notify.ResultFiltered, notify.ResultDryRun:
+	case "", "unrouted", notify.ResultSent, notify.ResultFailed, notify.ResultFiltered, notify.ResultDryRun, notify.ResultThrottled:
 	default:
 		return q, fmt.Errorf("result must be one of %s, unrouted", strings.Join(notify.Results, ", "))
 	}

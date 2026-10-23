@@ -205,6 +205,7 @@ type OutputView struct {
 	Filters   FiltersView             `json:"filters"`
 	CardFacts []config.CardFactConfig `json:"cardFacts,omitempty"`
 	Retry     RetryView               `json:"retry"`
+	Throttle  *ThrottleView           `json:"throttle,omitempty"`
 	Fallback  bool                    `json:"fallback,omitempty"`
 }
 
@@ -212,6 +213,13 @@ type OutputView struct {
 type RetryView struct {
 	Attempts int    `json:"attempts"`
 	Backoff  string `json:"backoff"`
+}
+
+// ThrottleView is an output's resolved throttle (#79); nil: none.
+type ThrottleView struct {
+	Key    []string `json:"key"`
+	Window string   `json:"window"`
+	Max    int      `json:"max,omitempty"`
 }
 
 // FiltersView is config.OutputFilters with JSON names.
@@ -279,6 +287,9 @@ func (s *Server) view() ConfigView {
 		}
 		rp := s.opts.Config.RetryFor(o)
 		ov.Retry = RetryView{Attempts: rp.Attempts, Backoff: rp.Backoff.String()}
+		if tp := s.opts.Config.ThrottleFor(o); tp.Enabled() {
+			ov.Throttle = &ThrottleView{Key: tp.Key, Window: tp.Window.String(), Max: tp.Max}
+		}
 		for name := range o.Headers {
 			ov.Headers = append(ov.Headers, name+": "+redacted)
 		}

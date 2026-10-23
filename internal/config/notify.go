@@ -19,8 +19,10 @@ import (
 // dispatch service.
 type NotifyConfig struct {
 	// Retry is the default retry policy of every output (#68).
-	Retry   RetryConfig    `yaml:"retry,omitempty"`
-	Outputs []OutputConfig `yaml:"outputs"`
+	Retry RetryConfig `yaml:"retry,omitempty"`
+	// Throttle is the default throttle of every output (#79); unset: none.
+	Throttle ThrottleConfig `yaml:"throttle,omitempty"`
+	Outputs  []OutputConfig `yaml:"outputs"`
 }
 
 // RetryConfig is how often an output retries a failed send. Unset fields
@@ -64,6 +66,70 @@ func (cfg *NotifyConfig) RetryFor(o OutputConfig) RetryPolicy {
 	return p
 }
 
+// ThrottleConfig caps what an output posts (#79): a message whose key was
+// sent within Window is not sent again, and at most Max messages go out per
+// Window. Unset fields fall back to the top-level throttle; no Window at
+// either level (or "0") means no throttle.
+type ThrottleConfig struct {
+	// Key lists the message fields that make two messages "the same"
+	// (throttleKeyFields); unset: DefaultThrottleKey.
+	Key []string `yaml:"key,omitempty"`
+	// Window is a Go duration: how long a key is held back after it was
+	// sent, and the period Max counts over.
+	Window string `yaml:"window,omitempty"`
+	// Max caps the posts per Window; 0: no cap, repeats are still collapsed.
+	Max int `yaml:"max,omitempty"`
+}
+
+// DefaultThrottleKey is the throttle key when none is configured.
+var DefaultThrottleKey = []string{"author", "system", "title"}
+
+// ThrottlePolicy is a resolved ThrottleConfig; Window 0 is no throttle.
+type ThrottlePolicy struct {
+	Key    []string
+	Window time.Duration
+	Max    int
+}
+
+// Enabled reports whether p throttles at all.
+func (p ThrottlePolicy) Enabled() bool { return p.Window > 0 }
+
+// ThrottleFor resolves the throttle of o: its own fields, then cfg.Throttle.
+// Validate has checked the values.
+func (cfg *NotifyConfig) ThrottleFor(o OutputConfig) ThrottlePolicy {
+	p := ThrottlePolicy{Key: DefaultThrottleKey}
+	for _, t := range []ThrottleConfig{cfg.Throttle, o.Throttle} {
+		if len(t.Key) > 0 {
+			p.Key = t.Key
+		}
+		if d, err := time.ParseDuration(strings.TrimSpace(t.Window)); err == nil {
+			p.Window = d
+		}
+		if t.Max > 0 {
+			p.Max = t.Max
+		}
+	}
+	if p.Window <= 0 {
+		return ThrottlePolicy{}
+	}
+	return p
+}
+
+// throttleKeyFields lists the message fields a throttle key can use. status
+// is the alert state (notify.AlertStatus), as in filters.match.
+var throttleKeyFields = map[string]struct{}{
+	"severity":        {},
+	"system":          {},
+	"author":          {},
+	"title":           {},
+	"message":         {},
+	"tags":            {},
+	"url":             {},
+	"assigneename":    {},
+	"assigneeaddress": {},
+	"status":          {},
+}
+
 // OutputConfig is one notification sink — a Teams channel, a generic webhook,
 // and (Phase 3) email, Slack, etc.
 type OutputConfig struct {
@@ -79,6 +145,9 @@ type OutputConfig struct {
 	Card CardConfig `yaml:"card,omitempty"`
 	// Retry overrides the top-level retry policy for this output.
 	Retry RetryConfig `yaml:"retry,omitempty"`
+	// Throttle overrides the top-level throttle for this output; window: 0
+	// turns an inherited one off.
+	Throttle ThrottleConfig `yaml:"throttle,omitempty"`
 	// Fallback makes the output a catch-all: it sends a message that passes
 	// its filters only when no other, non-fallback output matched it --
 	// "every error nobody else routed" without repeating each route (#74).
@@ -256,6 +325,9 @@ func Validate(cfg *NotifyConfig) error {
 	if err := validateRetry("retry", cfg.Retry); err != nil {
 		return err
 	}
+	if err := validateThrottle("throttle", cfg.Throttle, ""); err != nil {
+		return err
+	}
 	seen := map[string]struct{}{}
 	for i, o := range cfg.Outputs {
 		prefix := fmt.Sprintf("output[%d]", i)
@@ -298,6 +370,9 @@ func Validate(cfg *NotifyConfig) error {
 		if err := validateRetry(prefix+": retry", o.Retry); err != nil {
 			return err
 		}
+		if err := validateThrottle(prefix+": throttle", o.Throttle, cfg.Throttle.Window); err != nil {
+			return err
+		}
 		if len(o.Card.Facts) > 0 && o.Type != OutputTypeTeams {
 			return fmt.Errorf("%s: card is only supported for type %q", prefix, OutputTypeTeams)
 		}
@@ -329,6 +404,29 @@ func validateRetry(prefix string, r RetryConfig) error {
 		if err != nil || d < 0 || d > MaxRetryBackoff {
 			return fmt.Errorf("%s.backoff %q: must be a Go duration from 0 to %s", prefix, b, MaxRetryBackoff)
 		}
+	}
+	return nil
+}
+
+// validateThrottle checks one throttle block; inherited is the window it
+// falls back to, so key or max without any window is an error.
+func validateThrottle(prefix string, t ThrottleConfig, inherited string) error {
+	for _, k := range t.Key {
+		if _, ok := throttleKeyFields[strings.ToLower(strings.TrimSpace(k))]; !ok {
+			return fmt.Errorf("%s.key %q is not a recognised field", prefix, k)
+		}
+	}
+	if t.Max < 0 {
+		return fmt.Errorf("%s.max %d: must not be negative", prefix, t.Max)
+	}
+	w := strings.TrimSpace(t.Window)
+	if w != "" {
+		if d, err := time.ParseDuration(w); err != nil || d < 0 {
+			return fmt.Errorf("%s.window %q: must be a Go duration, 0 for none", prefix, w)
+		}
+	}
+	if w == "" && strings.TrimSpace(inherited) == "" && (len(t.Key) > 0 || t.Max > 0) {
+		return fmt.Errorf("%s: window is required with key or max", prefix)
 	}
 	return nil
 }

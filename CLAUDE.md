@@ -83,6 +83,8 @@ Per-output failures are logged but don't block the rest of the fan-out. See `not
 
 Retries (#68): `retry: {attempts, backoff}` at the top level, overridable per output (defaults 3 attempts from 1s, doubling, ≤10s per wait). Transient errors only (connection, timeout, 408/425/429, 5xx, `Retry-After` honoured). Outputs run in parallel per message, messages one at a time; the fan-out has 30s (`dispatchTimeout`, below redisqueue's 60s visibility timeout). A send that still fails is parked in `DEAD_LETTER_STREAM`; the stream entry is acked only when every output delivered or parked it (`notify.Undelivered`, handler error → no ack → redelivered). `Dispatcher.Stop` on SIGTERM ends pending waits.
 
+Throttle (#79): `throttle: {key, window, max}` at the top level, overridable per output field by field like `retry` (`window: 0` turns an inherited one off; no window anywhere: no throttle). A message whose key (default `author,system,title`) was sent within `window` is held back, and so is everything above `max` posts per window (0: no cap); result `throttled`, not sent, not dead-lettered, acked. A window in which `max` was reached ends with one summary post `N notifications held back (throttle)` naming the most frequent keys (`Dispatcher.RunThrottle`, checked every 15s). Resolved alerts always pass, are not counted and clear their key. In memory per pod. `smoke` (`NoThrottle`) and `replay` (`SendTo`) bypass it.
+
 ## Git Workflow
 
 Branch-per-issue with PR and merge to main.
@@ -121,6 +123,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
 - `internal/notify/status.go` — `AlertStatus`: firing / resolved from the `status=` tag or the `Resolved: ` prefix (#71)
+- `internal/notify/throttle.go` — per-output throttle state (key collapse, max per window, summary), `FlushThrottle`/`RunThrottle`, injectable clock (#79)
 - `internal/notify/retry.go` — `Retryable` (`StatusError`, permanent errors), the backoff loop, `DeadLetter` interface, `Stop`, `Undelivered` (#68)
 - `internal/catcher/deadletter.go` — `RedisDeadLetter`: XADD to the dead-letter stream with the message JSON; `Range`/`Recent`/`Len`/`Delete` read it back as `notify.ParkedEntry` (#70), `NewRedisDeadLetter` for `replay`
 - `internal/server/fragment.go` — homerun2-portal fragment contract: `<BASE_PATH>/ui/manifest.json` + `/ui/fragment/events` (the last dispatched messages, `hr-*` classes; #77)
@@ -128,7 +131,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/notify/dispatcher.go` — fan-out across configured outputs (in parallel per message, #68); one summary log line per message (`dispatched` with each output's result, or `no output matched`, #49) and the `OnDispatch` hook
 - `internal/sink/` — `notification-catcher sink`: stand-in receiver for the outputs (`/teams/<channel>` Teams-shaped, `/webhook/<channel>` any JSON, optional catch-all `/inbox`), in-memory store grouping posts per dispatched message into notifications, JSON API, HTML view in the homerun2-core-catcher design (Pico, `--hr-*` tokens, `BASE_PATH`): Notifications tab with a Channels column, a tab per system (Teams card preview), card playground; fault injection; page assets (Pico, adaptivecards, font, logo) vendored under `internal/webui/static/vendor/`, no CDN; see `docs/sink.md`
 - `internal/sink/assert.go` — `AssertClient.AssertPosts`: the polling behind `assert-card` (selection on the sink's side, expectations checked locally to report near misses)
-- `internal/server/` — optional read-only HTTP surface (#22, `HTTP_ADDR`): `/healthz` (Redis ping, 503 while connecting/down), the loaded config at `<BASE_PATH>/` and `/api/config` with secrets redacted (`RedactURL`, header values); `<BASE_PATH>/events` + `/api/events`: in-process ring buffer of dispatched messages with each output's result (`events.go`, fed by `Dispatcher.OnDispatch`, links to the sink via `SINK_URL`); `/metrics` (`notification_catcher_dispatch_total{output,result}`, hand-written text format, no client lib); `AUTH_TOKEN`; see `docs/http-ui.md`
+- `internal/server/` — optional read-only HTTP surface (#22, `HTTP_ADDR`): `/healthz` (Redis ping, 503 while connecting/down), the loaded config at `<BASE_PATH>/` and `/api/config` with secrets redacted (`RedactURL`, header values); `<BASE_PATH>/events` + `/api/events`: in-process ring buffer of dispatched messages with each output's result (`events.go`, fed by `Dispatcher.OnDispatch`, links to the sink via `SINK_URL`); `/metrics` (`notification_catcher_dispatch_total{output,result}`, results sent/failed/filtered/dry-run/throttled, hand-written text format, no client lib); `AUTH_TOKEN`; see `docs/http-ui.md`
 - `internal/webui/` — shared by the sink and the UI: embedded page assets (`static/`, vendored, no CDN), `ParseBasePath`, token `Auth`
 - `internal/models/models.go` — `CaughtMessage` (homerun.Message + stream metadata); what `Dispatch` and every `Notifier.Send` take, so the `objectId` reaches the payloads (card footer, webhook `objectId` field, delivery log lines; #64)
 - `internal/models/card.go` — Adaptive Card + Power Automate envelope structs
@@ -181,7 +184,7 @@ TEAMS_WEBHOOK_URL=https://teams.example/... \
     --tags infra,storage
 ```
 
-Prints one line per output (`OK` / `SKIPPED` / `DRY-RUN` / `FAIL: …`). Useful for verifying a new output or filter before deploying.
+Prints one line per output (`OK` / `SKIPPED` / `DRY-RUN` / `FAIL: …`). Throttles are bypassed. Useful for verifying a new output or filter before deploying.
 
 Add `--dry-run` (or set `DRY_RUN=true`) to test routing without firing any webhooks:
 

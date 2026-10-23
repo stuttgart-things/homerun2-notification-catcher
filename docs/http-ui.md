@@ -58,13 +58,14 @@ notification_catcher_dispatch_total{output="teams-platform-alerts",result="sent"
 notification_catcher_dispatch_total{output="teams-platform-alerts",result="failed"} 1
 notification_catcher_dispatch_total{output="teams-platform-alerts",result="filtered"} 40
 notification_catcher_dispatch_total{output="teams-platform-alerts",result="dry-run"} 0
+notification_catcher_dispatch_total{output="teams-platform-alerts",result="throttled"} 0
 notification_catcher_retries_total{output="teams-platform-alerts"} 2
 notification_catcher_dead_letter_total{output="teams-platform-alerts"} 1
 notification_catcher_messages_total{routed="true"} 12
 notification_catcher_messages_total{routed="false"} 3
 ```
 
-Every output starts with all four results at 0, so an alert like
+Every output starts with all five results at 0, so an alert like
 `increase(notification_catcher_dispatch_total{result="failed"}[10m]) > 0`
 works from the start. The logs carry the same per message: `dispatched`
 with each output's result, or `no output matched` (#49).
@@ -74,6 +75,10 @@ with each output's result, or `no output matched` (#49).
 [Retries and dead letter](configuration.md#retries-and-dead-letter)). The
 event log shows both for each output (`· 3 attempts · dead-lettered`), and
 the config page shows each output's retry policy and the dead-letter stream.
+
+`throttled` is a message the output's throttle held back (#79, see
+[Throttle](configuration.md#throttle-79)): a repeat of a key sent within the
+window, or one above `max`. The config page shows each output's throttle.
 
 ## Dead letter
 

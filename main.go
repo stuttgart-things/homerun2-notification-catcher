@@ -41,6 +41,10 @@ var (
 // never reclaimed while it is still being dispatched.
 const dispatchTimeout = 30 * time.Second
 
+// throttleFlushEvery is how often the throttle's window summaries are
+// checked (#79): one goes out at most this long after its window ends.
+const throttleFlushEvery = 15 * time.Second
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "smoke" {
 		if err := runSmoke(os.Args[2:]); err != nil {
@@ -131,6 +135,10 @@ func runServer() error {
 	// Canceled on SIGINT/SIGTERM: stops the Redis wait below, then the catcher.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if dispatcher.Throttled() {
+		go dispatcher.RunThrottle(ctx, throttleFlushEvery)
+	}
 
 	// Optional read-only HTTP surface (#22): health for the readiness probe,
 	// the loaded config. Up before the Redis wait, so /healthz can say
@@ -288,6 +296,9 @@ func runSmoke(args []string) error {
 		return err
 	}
 	dispatcher.DryRun = *dryRun
+	// A smoke message is sent even when the output's throttle would hold
+	// it back (#79).
+	dispatcher.NoThrottle = true
 
 	msg := homerun.Message{
 		Title:           *title,
@@ -455,6 +466,8 @@ func printSmokeResults(results []notify.DispatchResult) error {
 			fmt.Printf("- %s: SKIPPED (fallback: another output matched)\n", r.Output)
 		case r.Skipped:
 			fmt.Printf("- %s: SKIPPED (filters did not match)\n", r.Output)
+		case r.Throttled:
+			fmt.Printf("- %s: THROTTLED\n", r.Output)
 		case r.DryRun:
 			fmt.Printf("- %s: DRY-RUN (filters matched; Send not invoked)\n", r.Output)
 		case r.Err != nil:
