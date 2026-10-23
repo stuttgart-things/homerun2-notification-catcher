@@ -1,3 +1,10 @@
+# [3.14.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.13.0...v3.14.0) (2026-10-23)
+
+
+### Features
+
+* offer the latest dispatched messages as a homerun2-portal fragment ([0f2a17a](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/0f2a17aa4a96a5649ce2b5c461524fb4e7337633)), closes [#77](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/77)
+
 # [3.13.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.12.0...v3.13.0) (2026-10-22)
 
 
