@@ -113,6 +113,8 @@ func (s *Server) Handler() http.Handler {
 	app.HandleFunc("GET /events", webui.Auth(s.opts.Token, s.handleEventsPage))
 	app.HandleFunc("GET /api/dead-letter", webui.Auth(s.opts.Token, s.handleDeadLetterJSON))
 	app.HandleFunc("GET /dead-letter", webui.Auth(s.opts.Token, s.handleDeadLetterPage))
+	app.HandleFunc("GET /ui/manifest.json", webui.Auth(s.opts.Token, s.handleManifest))
+	app.HandleFunc("GET /ui/fragment/events", webui.Auth(s.opts.Token, s.handleEventsFragment))
 	app.Handle("GET /static/", webui.Static())
 	app.HandleFunc("GET /{$}", webui.Auth(s.opts.Token, s.handleIndex))
 

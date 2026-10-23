@@ -23,6 +23,8 @@ its notification in the sink.
 | `GET <BASE_PATH>/api/events` | token | The same as JSON; `result`, `objectId`, `limit` |
 | `GET <BASE_PATH>/dead-letter` | token | The [dead-letter stream](#dead-letter): pending count, the last 200 entries, the replay command per output |
 | `GET <BASE_PATH>/api/dead-letter` | token | The same as JSON (`stream`, `pending`, `entries`, `outputs`); `503` while Redis cannot be read |
+| `GET <BASE_PATH>/ui/manifest.json` | token | The [homerun2-portal](#behind-homerun2-portal) fragment manifest: title, version, the `events` fragment |
+| `GET <BASE_PATH>/ui/fragment/events` | token | The last 8 dispatched messages as a bare HTML fragment on the portal's `hr-*` classes, each with where it went |
 | `GET /metrics` | no | Prometheus text format, at the root |
 | `GET <BASE_PATH>/static/…` | no | Page assets (Pico, font, logo), embedded, shared with the sink |
 
@@ -32,6 +34,17 @@ its notification in the sink.
 
 `redis` is `connecting` while the catcher still waits for Redis at startup
 (the listener starts before that wait), `ok`, or `error: …`.
+
+## Behind homerun2-portal
+
+Run with `BASE_PATH=/notify` and list `notify=http://homerun2-notification-catcher`
+in the portal's `PORTAL_SERVICES`: the portal proxies the whole UI under
+`/notify/`, polls `/health` (at the root) for its status, and shows the
+`events` fragment on its overview card (refreshed every 10 s). The page
+switches to the portal's design tokens when it is served through the proxy.
+
+With `AUTH_TOKEN` set, the manifest and the fragment need the token too: the
+portal gets `401` and shows the status card only.
 
 ## Event log and metrics
 
