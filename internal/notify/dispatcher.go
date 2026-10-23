@@ -31,7 +31,11 @@ type Dispatcher struct {
 	// DeadLetter, when set, gets each send that still fails after its
 	// retries (#68). Nil: the failure is only logged.
 	DeadLetter DeadLetter
+	// NoThrottle skips every output's throttle (#79): smoke sends what it
+	// is asked to.
+	NoThrottle bool
 
+	now      func() time.Time // nil: time.Now; tests set it
 	stop     chan struct{}
 	stopOnce sync.Once
 }
@@ -42,10 +46,12 @@ const (
 	ResultFailed   = "failed"
 	ResultFiltered = "filtered"
 	ResultDryRun   = "dry-run"
+	// ResultThrottled: the output's throttle held the message back (#79).
+	ResultThrottled = "throttled"
 )
 
 // Results lists the result values, for zero-initialised metrics.
-var Results = []string{ResultSent, ResultFailed, ResultFiltered, ResultDryRun}
+var Results = []string{ResultSent, ResultFailed, ResultFiltered, ResultDryRun, ResultThrottled}
 
 // Record is one dispatched message and what each output did with it.
 type Record struct {
@@ -60,6 +66,7 @@ type boundOutput struct {
 	notifier Notifier
 	retry    config.RetryPolicy
 	fallback bool
+	throttle *throttle // nil: none
 }
 
 // DispatchResult records what happened for one output for one message. Used by
@@ -70,8 +77,10 @@ type DispatchResult struct {
 	// Covered: a fallback output whose filters matched, left out because a
 	// non-fallback output matched the message (#74). Skipped is set too.
 	Covered bool
-	DryRun  bool  // filters matched but Send was skipped (Dispatcher.DryRun=true)
-	Err     error // nil on success/skipped/dry-run, non-nil if Send failed
+	DryRun  bool // filters matched but Send was skipped (Dispatcher.DryRun=true)
+	// Throttled: filters matched, the output's throttle held it back (#79).
+	Throttled bool
+	Err       error // nil on success/skipped/dry-run, non-nil if Send failed
 	// Attempts counts the sends, retries included; 0 when filtered or dry-run.
 	Attempts int
 	// DeadLettered: the failed send was parked in the dead letter.
@@ -80,11 +89,13 @@ type DispatchResult struct {
 	ParkErr error
 }
 
-// Result names r: sent, failed, filtered or dry-run.
+// Result names r: sent, failed, filtered, dry-run or throttled.
 func (r DispatchResult) Result() string {
 	switch {
 	case r.Skipped:
 		return ResultFiltered
+	case r.Throttled:
+		return ResultThrottled
 	case r.DryRun:
 		return ResultDryRun
 	case r.Err != nil:
@@ -112,6 +123,7 @@ func NewDispatcher(cfg *config.NotifyConfig, httpClient *http.Client) (*Dispatch
 			notifier: n,
 			retry:    cfg.RetryFor(oc),
 			fallback: oc.Fallback,
+			throttle: throttleFor(cfg.ThrottleFor(oc)),
 		})
 	}
 	return &Dispatcher{outputs: outputs, stop: make(chan struct{})}, nil
@@ -129,6 +141,7 @@ func NewDispatcherWithNotifiers(entries ...DispatcherEntry) *Dispatcher {
 			notifier: e.Notifier,
 			retry:    e.Retry,
 			fallback: e.Fallback,
+			throttle: throttleFor(e.Throttle),
 		})
 	}
 	return &Dispatcher{outputs: outputs, stop: make(chan struct{})}
@@ -141,6 +154,14 @@ type DispatcherEntry struct {
 	Notifier Notifier
 	Retry    config.RetryPolicy // zero: one attempt, no retry
 	Fallback bool
+	Throttle config.ThrottlePolicy // zero: no throttle
+}
+
+func throttleFor(p config.ThrottlePolicy) *throttle {
+	if !p.Enabled() {
+		return nil
+	}
+	return newThrottle(p)
 }
 
 // Dispatch sends msg to every output whose filters match. The call is
@@ -163,6 +184,9 @@ type DispatcherEntry struct {
 //
 // A fallback output takes a matching message only when no non-fallback
 // output matched it (#74); otherwise its result is Covered.
+//
+// An output's throttle (#79) then holds back repeats and messages above its
+// max (result throttled, not sent, not dead-lettered), unless NoThrottle.
 func (d *Dispatcher) Dispatch(ctx context.Context, msg models.CaughtMessage) []DispatchResult {
 	results := make([]DispatchResult, len(d.outputs))
 	matched := make([]bool, len(d.outputs))
@@ -179,6 +203,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg models.CaughtMessage) []D
 		}
 		if o.fallback && routed {
 			results[i] = DispatchResult{Output: o.name, Skipped: true, Covered: true}
+			continue
+		}
+		if o.throttle != nil && !d.NoThrottle && !o.throttle.admit(msg.Message, d.clock()) {
+			slog.Debug("notifier throttled", "output", o.name, "objectId", msg.ObjectID, "title", msg.Title)
+			results[i] = DispatchResult{Output: o.name, Throttled: true}
 			continue
 		}
 		if d.DryRun {

@@ -203,6 +203,51 @@ The catcher UI's **Dead letter** tab lists them (with `HTTP_ADDR`, see
 [HTTP UI](http-ui.md#dead-letter)), and `notification_catcher_dead_letter_pending`
 counts them.
 
+## Throttle (#79)
+
+A guard for a channel that would otherwise get a flood, e.g. Kubernetes
+events from every cluster. Optional at the top level, overridable per output
+field by field like `retry`:
+
+```yaml
+throttle:                  # default for every output; leave out for none
+  key: [author, title]     # fields that make a message "the same"; default author, system, title
+  window: 1h               # a key sent within the window is not sent again
+  max: 20                  # at most this many posts per window and output; 0: no cap
+outputs:
+  - name: teams-k8s-events
+    type: msteams
+    webhook_url: ${TEAMS_WEBHOOK_URL}
+    throttle:
+      max: 5               # unset fields fall back to the top-level throttle
+  - name: pagerduty-events
+    type: webhook
+    url: https://events.pagerduty.com/v2/enqueue
+    throttle:
+      window: "0"          # this output is not throttled
+```
+
+| Field | |
+|---|---|
+| `key` | message fields joined into the key: `severity`, `system`, `author`, `title`, `message`, `tags`, `url`, `assigneename`, `assigneeaddress`, `status` |
+| `window` | Go duration. A key is held back for `window` after it was sent; `max` counts over a window opened by the first message after the last one ended. Required (here or at the top level) when `key` or `max` is set; no window: no throttle |
+| `max` | posts per window and output; `0` or unset: no cap |
+
+A held-back message gets the result `throttled` in the summary log line,
+the event log and `notification_catcher_dispatch_total{result="throttled"}`.
+It is not sent and not dead-lettered, and its stream entry is acked.
+
+Once an output reaches `max`, it holds back everything else until the window
+ends and then sends exactly one post, `N notifications held back (throttle)`,
+with the most frequent keys (checked every 15s, so it arrives shortly after
+the window ends). A window in which only repeats were held back ends quietly.
+With `DRY_RUN` the summary is only logged.
+
+A resolved alert (`status=resolved` tag or a `Resolved: ` message) is never
+held back and does not count towards `max`; it clears its key, so the next
+firing one goes out again. The state is in memory, per pod: a restart forgets
+the windows. `smoke` and `replay` bypass the throttle.
+
 ### Replay (#70)
 
 `notification-catcher replay` sends the parked entries of one output again,

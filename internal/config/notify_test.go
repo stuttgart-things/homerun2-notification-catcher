@@ -385,3 +385,60 @@ outputs:
 		t.Error("send_resolved unset: want nil")
 	}
 }
+
+func TestThrottleFor(t *testing.T) {
+	cfg := &NotifyConfig{
+		Throttle: ThrottleConfig{Window: "1h", Max: 20},
+		Outputs: []OutputConfig{
+			{Name: "inherits"},
+			{Name: "own", Throttle: ThrottleConfig{Key: []string{"title"}, Max: 5}},
+			{Name: "off", Throttle: ThrottleConfig{Window: "0"}},
+		},
+	}
+	got := cfg.ThrottleFor(cfg.Outputs[0])
+	if got.Window != time.Hour || got.Max != 20 || strings.Join(got.Key, ",") != "author,system,title" {
+		t.Errorf("inherits: %+v", got)
+	}
+	got = cfg.ThrottleFor(cfg.Outputs[1])
+	if got.Window != time.Hour || got.Max != 5 || strings.Join(got.Key, ",") != "title" {
+		t.Errorf("own: %+v", got)
+	}
+	if got := cfg.ThrottleFor(cfg.Outputs[2]); got.Enabled() {
+		t.Errorf("off: %+v", got)
+	}
+	if got := (&NotifyConfig{}).ThrottleFor(OutputConfig{}); got.Enabled() {
+		t.Errorf("unset: %+v, want no throttle", got)
+	}
+}
+
+func TestValidate_Throttle(t *testing.T) {
+	out := func(top, o ThrottleConfig) *NotifyConfig {
+		return &NotifyConfig{Throttle: top, Outputs: []OutputConfig{{Name: "x", Type: OutputTypeWebhook, URL: "https://a", Throttle: o}}}
+	}
+	for _, tc := range []struct {
+		cfg  *NotifyConfig
+		want string // "" = valid
+	}{
+		{out(ThrottleConfig{}, ThrottleConfig{}), ""},
+		{out(ThrottleConfig{Key: []string{"author", "Title", "status"}, Window: "1h", Max: 20}, ThrottleConfig{}), ""},
+		{out(ThrottleConfig{Window: "1h"}, ThrottleConfig{Max: 5}), ""},
+		{out(ThrottleConfig{Window: "1h"}, ThrottleConfig{Window: "0"}), ""},
+		{out(ThrottleConfig{Window: "soon"}, ThrottleConfig{}), `throttle.window "soon"`},
+		{out(ThrottleConfig{Window: "-1m"}, ThrottleConfig{}), `throttle.window "-1m"`},
+		{out(ThrottleConfig{Window: "1h", Max: -1}, ThrottleConfig{}), "throttle.max -1"},
+		{out(ThrottleConfig{Window: "1h", Key: []string{"timestamp"}}, ThrottleConfig{}), `throttle.key "timestamp"`},
+		{out(ThrottleConfig{Max: 5}, ThrottleConfig{}), "throttle: window is required"},
+		{out(ThrottleConfig{}, ThrottleConfig{Max: 5}), `output[0] "x": throttle: window is required`},
+	} {
+		err := Validate(tc.cfg)
+		if tc.want == "" {
+			if err != nil {
+				t.Errorf("%+v: expected valid, got %v", tc.cfg, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("expected error containing %q, got %v", tc.want, err)
+		}
+	}
+}

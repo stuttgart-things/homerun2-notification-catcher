@@ -34,6 +34,17 @@ retry:
   attempts: 3
   backoff: 1s
 
+# Throttle of every output (#79); an output's own `throttle:` overrides it
+# field by field (`window: 0` turns it off there). A message whose key was
+# sent within `window` is held back (result `throttled`), and at most `max`
+# messages go out per window and output; a window that reached max ends with
+# one post "N notifications held back (throttle)". Resolved alerts always go
+# out. Leave the block out for no throttle.
+throttle:
+  key: [author, system, title]   # default; also severity, message, tags, url, status, ...
+  window: 1h
+  max: 20                        # 0: no cap, only repeats are collapsed
+
 outputs:
   # MS Teams channel — Power Automate "post-message-in-chat" webhook.
   # Fires for warning+ messages from the kubernetes system tagged with infra
