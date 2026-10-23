@@ -1,3 +1,10 @@
+# [3.15.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.14.0...v3.15.0) (2026-10-23)
+
+
+### Features
+
+* throttle per output - collapse repeats, cap posts per window ([f7f3405](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/f7f3405aec25f1478305cd4c26804645f7eca19b)), closes [#79](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/79)
+
 # [3.14.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.13.0...v3.14.0) (2026-10-23)
 
 
