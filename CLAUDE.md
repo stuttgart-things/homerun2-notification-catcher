@@ -119,7 +119,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/config/config.go` — Redis + logging env config
 - `internal/config/notify.go` — YAML routing config loader (env interp, validation, severity ranking table)
 - `internal/notify/notifier.go` — `Notifier` interface
-- `internal/notify/teams.go` — MS Teams Adaptive-Card notifier
+- `internal/notify/teams.go` — MS Teams Adaptive-Card notifier; the preview line goes in the card's `fallbackText` and the envelope's `summary` (#45)
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
 - `internal/notify/status.go` — `AlertStatus`: firing / resolved from the `status=` tag or the `Resolved: ` prefix (#71)

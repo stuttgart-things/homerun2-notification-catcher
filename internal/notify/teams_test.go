@@ -148,9 +148,12 @@ func TestBuildEnvelope_FallbackText(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			card := BuildEnvelope(caught(tc.msg)).Attachments[0].Content
-			if card.FallbackText != tc.want {
+			env := BuildEnvelope(caught(tc.msg))
+			if card := env.Attachments[0].Content; card.FallbackText != tc.want {
 				t.Errorf("fallbackText = %q, want %q", card.FallbackText, tc.want)
+			}
+			if env.Summary != tc.want {
+				t.Errorf("summary = %q, want %q", env.Summary, tc.want)
 			}
 		})
 	}
@@ -225,6 +228,7 @@ func TestBuildEnvelope_JSONMarshalsCleanly(t *testing.T) {
 		`"$schema":"http://adaptivecards.io/schemas/adaptive-card.json"`,
 		`"type":"AdaptiveCard"`,
 		`"fallbackText":"[critical] boom"`,
+		`"summary":"[critical] boom"`,
 		`"Action.OpenUrl"`,
 	} {
 		if !strings.Contains(s, want) {

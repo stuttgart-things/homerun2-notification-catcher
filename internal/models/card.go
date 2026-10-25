@@ -5,7 +5,11 @@ package models
 // the legacy O365 connector) expect a top-level message with one attachment
 // containing the actual Adaptive Card content.
 type TeamsEnvelope struct {
-	Type        string            `json:"type"`
+	Type string `json:"type"`
+	// Summary is the message's preview text (notification, activity feed,
+	// chat list), the card's fallbackText again: a host that previews a card
+	// reads the message's summary, not the card's own fields (#45).
+	Summary     string            `json:"summary,omitempty"`
 	Attachments []TeamsAttachment `json:"attachments"`
 }
 

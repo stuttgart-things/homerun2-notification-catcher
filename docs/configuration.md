@@ -135,6 +135,10 @@ Resolutions have severity `success`, below a `severity_min: warning` floor. To g
 
 Without `severity_min`, `send_resolved: false` keeps an output to the firing alerts only.
 
+### Preview text (msteams)
+
+Where Teams cannot render a card (notifications, activity feed, chat previews, some clients) it shows only "Card - access it on https://go.skype.com/cards.unsupported" unless the payload carries text of its own. Every card carries one plain-text line, `[severity] title: body` (`[resolved] …` for a resolution, the body left out when it only repeats the title), twice: as the card's `fallbackText` and as the message's `summary` next to `attachments` (#45). For a card posted through a Power Automate Workflow, the preview may still read "Card": whether the Workflow passes `summary` on is up to Teams ([microsoft/AdaptiveCards#8647](https://github.com/microsoft/AdaptiveCards/issues/8647)).
+
 ### Card facts (msteams)
 
 By default a Teams card shows the title, the message and a FactSet of severity, system, author, tags and time, and below it, small and dimmed, the message's `objectId` (the id omni-pitcher answered `/pitch` with, to look it up in the logs or the sink; #64). A `webhook` output sends the `homerun.Message` JSON with an added `objectId` field. `card.facts` replaces the FactSet row for row (the footer stays), so a producer that packs its data into `key=value` tags gets one readable row per value:
