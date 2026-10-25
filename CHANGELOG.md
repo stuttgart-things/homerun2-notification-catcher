@@ -1,3 +1,10 @@
+# [3.16.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.15.0...v3.16.0) (2026-10-25)
+
+
+### Features
+
+* **teams:** send the preview line as the message summary too ([33fce8a](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/33fce8af170bf899b3c60e6ab70e6370fdff9da9)), closes [#45](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/45)
+
 # [3.15.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.14.0...v3.15.0) (2026-10-23)
 
 
