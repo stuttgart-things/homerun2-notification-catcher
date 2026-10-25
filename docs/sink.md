@@ -154,7 +154,7 @@ Tabs, in the homerun2-core-catcher layout (filters, table, detail panel):
 - **MS Teams**: the Teams posts; the detail shows the card as Teams renders
   it (Microsoft's Adaptive Cards JS renderer, `adaptivecards@3.0.4`, with a
   host config close to Teams dark or light; a plain renderer if that script
-  fails), the notification preview line (`fallbackText`, #45) and the raw
+  fails), the notification preview line (`fallbackText`, the envelope's `summary` when a card has none; #45) and the raw
   payload.
 - **Webhook**: the webhook posts with their JSON payload.
 - **Card playground**: paste a `homerun.Message` JSON (an `objectId` key in

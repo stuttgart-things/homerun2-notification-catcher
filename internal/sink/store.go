@@ -526,8 +526,8 @@ func summarizeMessage(m *Message, msg homerun.Message) {
 	add("Time", msg.Timestamp)
 }
 
-// summarizeCard fills Title, Body, FallbackText, Style and Facts from the
-// first card. Title and Body are the first two TextBlocks, as in the
+// summarizeCard fills Title, Body, FallbackText (else the envelope's
+// summary), Style and Facts from the first card. Title and Body are the first two TextBlocks, as in the
 // catcher's own card. Severity and System come from the facts, else
 // severity from the "[severity] " prefix of the fallback text.
 func summarizeCard(m *Message) {
@@ -536,6 +536,9 @@ func summarizeCard(m *Message) {
 	}
 	card := m.Envelope.Attachments[0].Content
 	m.FallbackText = card.FallbackText
+	if m.FallbackText == "" {
+		m.FallbackText = m.Envelope.Summary
+	}
 	texts := 0
 	var walk func([]models.CardElement)
 	walk = func(elems []models.CardElement) {

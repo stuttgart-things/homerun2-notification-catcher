@@ -98,11 +98,13 @@ func BuildEnvelope(msg models.CaughtMessage) models.TeamsEnvelope {
 // BuildEnvelopeWithCard is BuildEnvelope with an output's card config: its
 // facts, when set, replace the default FactSet.
 func BuildEnvelopeWithCard(msg models.CaughtMessage, card config.CardConfig) models.TeamsEnvelope {
+	content := buildCard(msg.Message, msg.ObjectID, card)
 	return models.TeamsEnvelope{
-		Type: "message",
+		Type:    "message",
+		Summary: content.FallbackText,
 		Attachments: []models.TeamsAttachment{{
 			ContentType: adaptiveCardContentType,
-			Content:     buildCard(msg.Message, msg.ObjectID, card),
+			Content:     content,
 		}},
 	}
 }

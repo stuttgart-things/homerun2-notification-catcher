@@ -720,3 +720,19 @@ func TestRenderObjectID(t *testing.T) {
 		t.Errorf("last element = %+v", last)
 	}
 }
+
+// A card without fallbackText still gets a preview line from the envelope's
+// summary (#45).
+func TestTeamsPost_SummaryOnly(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	body := `{"type":"message","summary":"[info] from summary","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","contentUrl":null,"content":{"type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","text":"t"}]}}]}`
+	resp, err := http.Post(ts.URL+"/teams/plain", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	got := listMessages(t, ts.URL+"/api/messages?channel=plain")
+	if len(got) != 1 || got[0].FallbackText != "[info] from summary" || got[0].Severity != "info" {
+		t.Errorf("want the summary as preview line and severity info, got %+v", got)
+	}
+}
