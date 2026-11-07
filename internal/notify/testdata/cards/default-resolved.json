@@ -1,0 +1,69 @@
+{
+  "type": "message",
+  "summary": "[resolved] RESOLVED: KubeJobFailed: Job flux-system/image-reflector-cleanup failed to complete.",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "fallbackText": "[resolved] RESOLVED: KubeJobFailed: Job flux-system/image-reflector-cleanup failed to complete.",
+        "body": [
+          {
+            "type": "Container",
+            "style": "good",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "RESOLVED: KubeJobFailed",
+                "size": "Large",
+                "weight": "Bolder",
+                "wrap": true,
+                "color": "good"
+              },
+              {
+                "type": "TextBlock",
+                "text": "Job flux-system/image-reflector-cleanup failed to complete.",
+                "wrap": true
+              }
+            ]
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {
+                "title": "Severity",
+                "value": "success"
+              },
+              {
+                "title": "System",
+                "value": "kubernetes"
+              },
+              {
+                "title": "Author",
+                "value": "alertmanager"
+              },
+              {
+                "title": "Tags",
+                "value": "alertname=KubeJobFailed,namespace=flux-system,cluster=platform-sthings,status=resolved"
+              },
+              {
+                "title": "Resolved",
+                "value": "2026-11-07T09:02:30Z"
+              }
+            ]
+          },
+          {
+            "type": "TextBlock",
+            "text": "objectId 5d1c2b7e-alertmanager-resolved",
+            "size": "Small",
+            "wrap": true,
+            "isSubtle": true
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "type": "message",
+  "summary": "[success] feat(platform-sthings): route the catcher's Teams outputs to their channels: Merged by patrick-hermann-sva",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.5",
+        "fallbackText": "[success] feat(platform-sthings): route the catcher's Teams outputs to their channels: Merged by patrick-hermann-sva",
+        "msteams": {
+          "width": "Full"
+        },
+        "body": [
+          {
+            "type": "Container",
+            "style": "good",
+            "items": [
+              {
+                "type": "ColumnSet",
+                "columns": [
+                  {
+                    "type": "Column",
+                    "items": [
+                      {
+                        "type": "Image",
+                        "style": "Person",
+                        "size": "Small",
+                        "url": "https://github.com/patrick-hermann-sva.png",
+                        "altText": "patrick-hermann-sva"
+                      }
+                    ],
+                    "width": "auto"
+                  },
+                  {
+                    "type": "Column",
+                    "items": [
+                      {
+                        "type": "TextBlock",
+                        "text": "✅ PR #4404 merged",
+                        "size": "Large",
+                        "weight": "Bolder",
+                        "wrap": true
+                      },
+                      {
+                        "type": "TextBlock",
+                        "text": "stuttgart-things/stuttgart-things · feat/platform-sthings-teams-routing → main",
+                        "wrap": true,
+                        "isSubtle": true,
+                        "spacing": "None"
+                      }
+                    ],
+                    "width": "stretch",
+                    "verticalContentAlignment": "Center"
+                  }
+                ]
+              }
+            ],
+            "bleed": true
+          },
+          {
+            "type": "TextBlock",
+            "text": "feat(platform-sthings): route the catcher's Teams outputs to their channels",
+            "wrap": true
+          },
+          {
+            "type": "TextBlock",
+            "text": "Merged by patrick-hermann-sva",
+            "wrap": true
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {
+                "title": "Author",
+                "value": "patrick-hermann-sva"
+              },
+              {
+                "title": "System",
+                "value": "homerun2-git-pitcher"
+              },
+              {
+                "title": "Time",
+                "value": "{{DATE(2026-11-07T21:47:06Z, SHORT)}}, {{TIME(2026-11-07T21:47:06Z)}}"
+              }
+            ]
+          },
+          {
+            "type": "Container",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "Tags: github, pull_request, repo=stuttgart-things/stuttgart-things, number=4404, action=merged, head=feat/platform-sthings-teams-routing, base=main, actor=patrick-hermann-sva",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true
+              },
+              {
+                "type": "TextBlock",
+                "text": "objectId abf0fc1e-7c1b-4b0e-9a57-3a3c1d0e2f11-homerun2-git-pitcher",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true,
+                "fontType": "Monospace"
+              }
+            ],
+            "id": "details",
+            "isVisible": false
+          }
+        ],
+        "actions": [
+          {
+            "type": "Action.OpenUrl",
+            "title": "PR öffnen",
+            "url": "https://github.com/stuttgart-things/stuttgart-things/pull/4404"
+          },
+          {
+            "type": "Action.OpenUrl",
+            "title": "Diff",
+            "url": "https://github.com/stuttgart-things/stuttgart-things/pull/4404/files"
+          },
+          {
+            "type": "Action.ToggleVisibility",
+            "title": "Details",
+            "targetElements": [
+              "details"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

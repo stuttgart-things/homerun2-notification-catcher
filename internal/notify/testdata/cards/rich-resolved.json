@@ -1,0 +1,95 @@
+{
+  "type": "message",
+  "summary": "[resolved] RESOLVED: KubeJobFailed: Job flux-system/image-reflector-cleanup failed to complete.",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.5",
+        "fallbackText": "[resolved] RESOLVED: KubeJobFailed: Job flux-system/image-reflector-cleanup failed to complete.",
+        "msteams": {
+          "width": "Full"
+        },
+        "body": [
+          {
+            "type": "Container",
+            "style": "good",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "✅ RESOLVED: KubeJobFailed",
+                "size": "Large",
+                "weight": "Bolder",
+                "wrap": true
+              },
+              {
+                "type": "TextBlock",
+                "text": "flux-system · platform-sthings",
+                "wrap": true,
+                "isSubtle": true,
+                "spacing": "None"
+              }
+            ],
+            "bleed": true
+          },
+          {
+            "type": "TextBlock",
+            "text": "Job flux-system/image-reflector-cleanup failed to complete.",
+            "wrap": true
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {
+                "title": "Author",
+                "value": "alertmanager"
+              },
+              {
+                "title": "System",
+                "value": "kubernetes"
+              },
+              {
+                "title": "Resolved",
+                "value": "{{DATE(2026-11-07T09:02:30Z, SHORT)}}, {{TIME(2026-11-07T09:02:30Z)}}"
+              }
+            ]
+          },
+          {
+            "type": "Container",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "Tags: alertname=KubeJobFailed, namespace=flux-system, cluster=platform-sthings, status=resolved",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true
+              },
+              {
+                "type": "TextBlock",
+                "text": "objectId 5d1c2b7e-alertmanager-resolved",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true,
+                "fontType": "Monospace"
+              }
+            ],
+            "id": "details",
+            "isVisible": false
+          }
+        ],
+        "actions": [
+          {
+            "type": "Action.ToggleVisibility",
+            "title": "Details",
+            "targetElements": [
+              "details"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

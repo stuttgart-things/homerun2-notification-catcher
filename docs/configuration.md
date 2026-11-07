@@ -159,7 +159,93 @@ By default a Teams card shows the title, the message and a FactSet of severity, 
         - { title: Zeit, field: timestamp }     # a message field
 ```
 
-Each row sets `title` and exactly one of `tag` (key looked up in the comma-separated `Tags`, case-insensitive) or `field` (`severity`, `system`, `author`, `title`, `message`, `tags`, `timestamp`, `url`, `assigneename`, `assigneeaddress`). A row whose value is empty is left out. `card` is rejected on a `webhook` output.
+Each row sets `title` and exactly one of `tag` (key looked up in the comma-separated `Tags`, case-insensitive) or `field` (`severity`, `system`, `author`, `title`, `message`, `tags`, `timestamp`, `url`, `assigneename`, `assigneeaddress`). A row whose value is empty is left out. `card` is rejected on a `webhook` output. `card.facts` works the same in the [rich layout](#rich-card-layout-msteams-82).
+
+### Rich card layout (msteams, #82)
+
+`card.layout: rich` switches an output to a card made to be scanned at a glance: a header coloured by severity with an emoji and a short headline, the full title and message below, the time in the reader's time zone, buttons, and the tags and `objectId` collapsed behind a **Details** button. Without `layout` (or with `layout: default`) the card stays exactly as described above.
+
+| Part | Rendered as |
+|---|---|
+| Header | `Container` with `bleed: true` and the severity's style: `success` → `good` ✅, `warning` → `warning` ⚠️, `error` / `critical` → `attention` 🔥, `info` (and unknown) → `accent` ℹ️, `debug` → `default` 🐞. A resolved alert is `good` ✅ with `RESOLVED: ` before the headline, as in the default layout (#71). |
+| Headline | emoji + the first `headline` template whose placeholders all resolve, else the message title; bold, large. |
+| Subtitle | the first `subtitle` template whose placeholders all resolve, small and dimmed under the headline; none if no template resolves. |
+| Avatar | `avatar: github`: `https://github.com/<author>.png`, round (`style: Person`), left of the headline — only when the author looks like a GitHub login and is not a tool or bot (`…[bot]`, `…-bot`, `grafana`, `alertmanager`, `flux`, `renovate`, …, or the message's `system`). `none` (default): no image. |
+| Text | the full title (unless it is the headline) and the message (resolved: without its `Resolved: `). |
+| Facts | `Author`, `System`, `Time` (`Resolved` for a resolution); `card.facts` replaces them as in the default layout. An RFC 3339 timestamp, also in a `field: timestamp` fact, is rendered as `{{DATE(<utc>, SHORT)}}, {{TIME(<utc>)}}`, which Teams shows in the reader's time zone; any other value as is. |
+| Details | hidden `Container` (`id: details`): `Tags: …` and `objectId …` (the sink and `assert-card` still find it); the **Details** button (`Action.ToggleVisibility`) shows it. Left out, with its button, when the message has neither. |
+| Buttons | `actions`: one `Action.OpenUrl` each; without `actions`, **Open** for the message's `url`. A button whose URL comes out empty or is not an absolute `http(s)` URL is left out. |
+| Card | version `1.5`, `msteams.width: Full`; `fallbackText` / `summary` as in the default layout (#45). |
+
+Templates are plain text with placeholders: `{tag:<key>}` (the value of `<key>=` in the message's comma-separated `tags`, case-insensitive) and `{field:<name>}` (a message field, the names `card.facts` takes). A template is all or nothing: if one of its placeholders is empty, the template is skipped, so a message without the tags (an older producer, a different event) falls back to the next template, then to the title — never `PR # merged`. `headline` and `subtitle` take one template or a list tried in order. Each action sets `title` and exactly one of `field` (a message field holding the URL) or `template`.
+
+A git PR output (homerun2-git-pitcher sets `url` and the tags `repo`, `number`, `action`, `head`, `base`, `actor`):
+
+```yaml
+  - name: teams-git
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL_GIT}"
+    filters:
+      match: { system: homerun2-git-pitcher }
+    card:
+      layout: rich
+      headline: "PR #{tag:number} {tag:action}"   # falls back to the title
+      subtitle:
+        - "{tag:repo} · {tag:head} → {tag:base}"
+        - "{tag:repo}"
+      avatar: github
+      actions:
+        - { title: "PR öffnen", field: url }
+        - { title: Diff, template: "{field:url}/files" }
+```
+
+renders a merged PR as (envelope left out):
+
+```json
+{"type":"AdaptiveCard","version":"1.5","msteams":{"width":"Full"},
+ "fallbackText":"[success] feat(platform-sthings): route the catcher's Teams outputs to their channels: Merged by patrick-hermann-sva",
+ "body":[
+  {"type":"Container","style":"good","bleed":true,"items":[{"type":"ColumnSet","columns":[
+    {"type":"Column","width":"auto","items":[{"type":"Image","url":"https://github.com/patrick-hermann-sva.png","size":"Small","style":"Person","altText":"patrick-hermann-sva"}]},
+    {"type":"Column","width":"stretch","verticalContentAlignment":"Center","items":[
+      {"type":"TextBlock","text":"✅ PR #4404 merged","weight":"Bolder","size":"Large","wrap":true},
+      {"type":"TextBlock","text":"stuttgart-things/stuttgart-things · feat/platform-sthings-teams-routing → main","isSubtle":true,"spacing":"None","wrap":true}]}]}]},
+  {"type":"TextBlock","text":"feat(platform-sthings): route the catcher's Teams outputs to their channels","wrap":true},
+  {"type":"TextBlock","text":"Merged by patrick-hermann-sva","wrap":true},
+  {"type":"FactSet","facts":[{"title":"Author","value":"patrick-hermann-sva"},{"title":"System","value":"homerun2-git-pitcher"},
+    {"title":"Time","value":"{{DATE(2026-11-07T21:47:06Z, SHORT)}}, {{TIME(2026-11-07T21:47:06Z)}}"}]},
+  {"type":"Container","id":"details","isVisible":false,"items":[
+    {"type":"TextBlock","text":"Tags: github, pull_request, repo=stuttgart-things/stuttgart-things, number=4404, …","isSubtle":true,"size":"Small","wrap":true},
+    {"type":"TextBlock","text":"objectId abf0fc1e-…-homerun2-git-pitcher","isSubtle":true,"size":"Small","fontType":"Monospace","wrap":true}]}],
+ "actions":[
+  {"type":"Action.OpenUrl","title":"PR öffnen","url":"https://github.com/stuttgart-things/stuttgart-things/pull/4404"},
+  {"type":"Action.OpenUrl","title":"Diff","url":"https://github.com/stuttgart-things/stuttgart-things/pull/4404/files"},
+  {"type":"Action.ToggleVisibility","title":"Details","targetElements":["details"]}]}
+```
+
+An alerts output (omni-pitcher's `/pitch/alertmanager` sets `alertname`, `namespace`, `cluster`, `status`, …):
+
+```yaml
+  - name: teams-alerts
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL_ALERTS}"
+    filters:
+      match: { author: alertmanager }
+    card:
+      layout: rich
+      headline: "{tag:alertname}"
+      subtitle:
+        - "{tag:namespace} · {tag:cluster}"
+        - "{field:system}"
+      actions:
+        - { title: Grafana, field: url }
+```
+
+A firing `KubeJobFailed` warning gets a yellow header `⚠️ KubeJobFailed` over `flux-system · platform-sthings`; its resolution a green `✅ RESOLVED: KubeJobFailed` with a `Resolved` time. More cards (every case of the tests) are in [`internal/notify/testdata/cards`](https://github.com/stuttgart-things/homerun2-notification-catcher/tree/main/internal/notify/testdata/cards); the sink's card playground renders a `card:` block live.
+
+A top-level `card:` is the default of every `msteams` output, merged field by field with the output's own (`layout`, `avatar`; `headline`, `subtitle`, `actions` and `facts` replace as a whole), so `card: {layout: rich}` at the top switches every Teams output and an output can go back with `card: {layout: default}`.
+
+An unknown `layout` or `avatar`, a placeholder other than `{tag:<key>}` / `{field:<known field>}`, an empty template, or an action without `title` or with both or neither of `field` / `template` fails the config load at startup, naming the output and the key, e.g. `output[0] "teams-git": card.headline[0] "PR #{pr:number}": placeholder {pr:number}: want {tag:<key>} or {field:<name>}`.
 
 ### Env-var interpolation
 

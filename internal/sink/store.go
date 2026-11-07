@@ -528,7 +528,7 @@ func summarizeMessage(m *Message, msg homerun.Message) {
 
 // summarizeCard fills Title, Body, FallbackText (else the envelope's
 // summary), Style and Facts from the first card. Title and Body are the first two TextBlocks, as in the
-// catcher's own card. Severity and System come from the facts, else
+// catcher's own card (the headline and subtitle of a rich one). Severity and System come from the facts, else
 // severity from the "[severity] " prefix of the fallback text.
 func summarizeCard(m *Message) {
 	if len(m.Envelope.Attachments) == 0 {
@@ -566,6 +566,7 @@ func summarizeCard(m *Message) {
 				m.Facts[f.Title] = f.Value
 			}
 			walk(e.Items)
+			walk(e.Columns) // the rich layout's header (#82)
 		}
 	}
 	walk(card.Body)

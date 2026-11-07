@@ -204,9 +204,11 @@ type OutputView struct {
 	Headers   []string                `json:"headers,omitempty"` // "Name: REDACTED"
 	Filters   FiltersView             `json:"filters"`
 	CardFacts []config.CardFactConfig `json:"cardFacts,omitempty"`
-	Retry     RetryView               `json:"retry"`
-	Throttle  *ThrottleView           `json:"throttle,omitempty"`
-	Fallback  bool                    `json:"fallback,omitempty"`
+	// CardLayout is "rich" for the rich layout (#82), else empty.
+	CardLayout string        `json:"cardLayout,omitempty"`
+	Retry      RetryView     `json:"retry"`
+	Throttle   *ThrottleView `json:"throttle,omitempty"`
+	Fallback   bool          `json:"fallback,omitempty"`
 }
 
 // RetryView is an output's resolved retry policy (#68).
@@ -282,8 +284,12 @@ func (s *Server) view() ConfigView {
 				SendResolved:    o.Filters.SendResolved,
 				MessageContains: o.Filters.MessageContains,
 			},
-			CardFacts: o.Card.Facts,
-			Fallback:  o.Fallback,
+			Fallback: o.Fallback,
+		}
+		card := s.opts.Config.CardFor(o)
+		ov.CardFacts = card.Facts
+		if card.Rich() {
+			ov.CardLayout = config.CardLayoutRich
 		}
 		rp := s.opts.Config.RetryFor(o)
 		ov.Retry = RetryView{Attempts: rp.Attempts, Backoff: rp.Backoff.String()}

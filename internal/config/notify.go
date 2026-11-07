@@ -22,7 +22,10 @@ type NotifyConfig struct {
 	Retry RetryConfig `yaml:"retry,omitempty"`
 	// Throttle is the default throttle of every output (#79); unset: none.
 	Throttle ThrottleConfig `yaml:"throttle,omitempty"`
-	Outputs  []OutputConfig `yaml:"outputs"`
+	// Card is the default card of every msteams output (#82), merged with
+	// the output's own card field by field.
+	Card    CardConfig     `yaml:"card,omitempty"`
+	Outputs []OutputConfig `yaml:"outputs"`
 }
 
 // RetryConfig is how often an output retries a failed send. Unset fields
@@ -158,8 +161,100 @@ type OutputConfig struct {
 // FactSet row for row -- a producer that packs its data into key=value tags
 // (zaehlwerk's player_a=..., sets=...) gets one readable row per value instead
 // of the raw tag string.
+//
+// Layout picks the card's shape (#82): unset or "default" is the classic card,
+// "rich" a scannable one with a severity-styled header, a short headline, an
+// optional avatar, local time, buttons and collapsed details. Headline,
+// Subtitle, Avatar and Actions apply to the rich layout only.
 type CardConfig struct {
-	Facts []CardFactConfig `yaml:"facts,omitempty"`
+	Layout string `yaml:"layout,omitempty"`
+	// Headline is the rich header's text: the first template whose
+	// placeholders all resolve, else the message title.
+	Headline Templates `yaml:"headline,omitempty"`
+	// Subtitle is the small, dimmed line under the headline: the first
+	// template whose placeholders all resolve, else none.
+	Subtitle Templates `yaml:"subtitle,omitempty"`
+	// Avatar is none (default) or github: https://github.com/<author>.png
+	// when the author looks like a GitHub login.
+	Avatar string `yaml:"avatar,omitempty"`
+	// Actions replaces the default "Open" button (the message url).
+	Actions []CardActionConfig `yaml:"actions,omitempty"`
+	Facts   []CardFactConfig   `yaml:"facts,omitempty"`
+}
+
+// Card layouts and avatar sources.
+const (
+	CardLayoutDefault = "default"
+	CardLayoutRich    = "rich"
+	CardAvatarNone    = "none"
+	CardAvatarGitHub  = "github"
+)
+
+// IsZero reports whether no card field is set.
+func (c CardConfig) IsZero() bool {
+	return c.Layout == "" && len(c.Headline) == 0 && len(c.Subtitle) == 0 &&
+		c.Avatar == "" && len(c.Actions) == 0 && len(c.Facts) == 0
+}
+
+// Rich reports whether c selects the rich layout.
+func (c CardConfig) Rich() bool {
+	return strings.EqualFold(strings.TrimSpace(c.Layout), CardLayoutRich)
+}
+
+// Templates is one template or a list of them, tried in order; YAML takes a
+// string or a sequence of strings.
+type Templates []string
+
+// UnmarshalYAML accepts a scalar as a one-element list.
+func (t *Templates) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*t = Templates{n.Value}
+		return nil
+	}
+	var list []string
+	if err := n.Decode(&list); err != nil {
+		return fmt.Errorf("line %d: want a template string or a list of them", n.Line)
+	}
+	*t = list
+	return nil
+}
+
+// CardActionConfig is one button of a rich card: Action.OpenUrl with Title
+// and the URL from exactly one of Field (a message field, see cardFields) or
+// Template. A button whose URL comes out empty is left out.
+type CardActionConfig struct {
+	Title    string `yaml:"title"`
+	Field    string `yaml:"field,omitempty"`
+	Template string `yaml:"template,omitempty"`
+}
+
+// CardFor resolves the card of o: cfg.Card, overridden field by field by
+// o.Card. Lists (headline, subtitle, actions, facts) replace, not append.
+// Only msteams outputs have a card.
+func (cfg *NotifyConfig) CardFor(o OutputConfig) CardConfig {
+	if o.Type != OutputTypeTeams {
+		return CardConfig{}
+	}
+	c := cfg.Card
+	if o.Card.Layout != "" {
+		c.Layout = o.Card.Layout
+	}
+	if len(o.Card.Headline) > 0 {
+		c.Headline = o.Card.Headline
+	}
+	if len(o.Card.Subtitle) > 0 {
+		c.Subtitle = o.Card.Subtitle
+	}
+	if o.Card.Avatar != "" {
+		c.Avatar = o.Card.Avatar
+	}
+	if len(o.Card.Actions) > 0 {
+		c.Actions = o.Card.Actions
+	}
+	if len(o.Card.Facts) > 0 {
+		c.Facts = o.Card.Facts
+	}
+	return c
 }
 
 // CardFactConfig is one FactSet row: Title, and the value from exactly one of
@@ -328,6 +423,9 @@ func Validate(cfg *NotifyConfig) error {
 	if err := validateThrottle("throttle", cfg.Throttle, ""); err != nil {
 		return err
 	}
+	if err := validateCard("card", cfg.Card); err != nil {
+		return err
+	}
 	seen := map[string]struct{}{}
 	for i, o := range cfg.Outputs {
 		prefix := fmt.Sprintf("output[%d]", i)
@@ -373,26 +471,114 @@ func Validate(cfg *NotifyConfig) error {
 		if err := validateThrottle(prefix+": throttle", o.Throttle, cfg.Throttle.Window); err != nil {
 			return err
 		}
-		if len(o.Card.Facts) > 0 && o.Type != OutputTypeTeams {
+		if !o.Card.IsZero() && o.Type != OutputTypeTeams {
 			return fmt.Errorf("%s: card is only supported for type %q", prefix, OutputTypeTeams)
 		}
-		for j, f := range o.Card.Facts {
-			fp := fmt.Sprintf("%s: card.facts[%d]", prefix, j)
-			if strings.TrimSpace(f.Title) == "" {
-				return fmt.Errorf("%s: title is required", fp)
+		if err := validateCard(prefix+": card", o.Card); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateCard checks one card block (an output's or the top-level default).
+func validateCard(prefix string, c CardConfig) error {
+	switch strings.ToLower(strings.TrimSpace(c.Layout)) {
+	case "", CardLayoutDefault, CardLayoutRich:
+	default:
+		return fmt.Errorf("%s.layout %q: must be %s or %s", prefix, c.Layout, CardLayoutDefault, CardLayoutRich)
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Avatar)) {
+	case "", CardAvatarNone, CardAvatarGitHub:
+	default:
+		return fmt.Errorf("%s.avatar %q: must be %s or %s", prefix, c.Avatar, CardAvatarNone, CardAvatarGitHub)
+	}
+	for _, list := range []struct {
+		name string
+		ts   Templates
+	}{{"headline", c.Headline}, {"subtitle", c.Subtitle}} {
+		for j, tpl := range list.ts {
+			if err := ValidateTemplate(tpl); err != nil {
+				return fmt.Errorf("%s.%s[%d] %q: %w", prefix, list.name, j, tpl, err)
 			}
-			tag, field := strings.TrimSpace(f.Tag), strings.TrimSpace(f.Field)
-			if (tag == "") == (field == "") {
-				return fmt.Errorf("%s: set exactly one of tag or field", fp)
+		}
+	}
+	for j, a := range c.Actions {
+		ap := fmt.Sprintf("%s.actions[%d]", prefix, j)
+		if strings.TrimSpace(a.Title) == "" {
+			return fmt.Errorf("%s: title is required", ap)
+		}
+		field, tpl := strings.TrimSpace(a.Field), strings.TrimSpace(a.Template)
+		if (field == "") == (tpl == "") {
+			return fmt.Errorf("%s: set exactly one of field or template", ap)
+		}
+		if field != "" {
+			if _, ok := cardFields[strings.ToLower(field)]; !ok {
+				return fmt.Errorf("%s: field %q is not a recognised field", ap, field)
 			}
-			if field != "" {
-				if _, ok := cardFields[strings.ToLower(field)]; !ok {
-					return fmt.Errorf("%s: field %q is not a recognised field", fp, field)
-				}
+		}
+		if tpl != "" {
+			if err := ValidateTemplate(tpl); err != nil {
+				return fmt.Errorf("%s.template %q: %w", ap, tpl, err)
+			}
+		}
+	}
+	for j, f := range c.Facts {
+		fp := fmt.Sprintf("%s.facts[%d]", prefix, j)
+		if strings.TrimSpace(f.Title) == "" {
+			return fmt.Errorf("%s: title is required", fp)
+		}
+		tag, field := strings.TrimSpace(f.Tag), strings.TrimSpace(f.Field)
+		if (tag == "") == (field == "") {
+			return fmt.Errorf("%s: set exactly one of tag or field", fp)
+		}
+		if field != "" {
+			if _, ok := cardFields[strings.ToLower(field)]; !ok {
+				return fmt.Errorf("%s: field %q is not a recognised field", fp, field)
 			}
 		}
 	}
 	return nil
+}
+
+// templateBraces finds every {...} in a card template; each one must be a
+// placeholder, {tag:<key>} or {field:<name>}.
+var templateBraces = regexp.MustCompile(`\{[^{}]*\}`)
+
+// TemplatePlaceholder is one {kind:key} of a card template.
+type TemplatePlaceholder struct {
+	Match string // "{tag:number}", as written
+	Kind  string // "tag" or "field", lower case
+	Key   string
+}
+
+// TemplatePlaceholders lists the placeholders of tpl; err names the first
+// one that is not {tag:<key>} or {field:<name>} with a known field.
+func TemplatePlaceholders(tpl string) ([]TemplatePlaceholder, error) {
+	var out []TemplatePlaceholder
+	for _, m := range templateBraces.FindAllString(tpl, -1) {
+		kind, key, ok := strings.Cut(m[1:len(m)-1], ":")
+		kind, key = strings.ToLower(strings.TrimSpace(kind)), strings.TrimSpace(key)
+		if !ok || key == "" || (kind != "tag" && kind != "field") {
+			return nil, fmt.Errorf("placeholder %s: want {tag:<key>} or {field:<name>}", m)
+		}
+		if kind == "field" {
+			if _, known := cardFields[strings.ToLower(key)]; !known {
+				return nil, fmt.Errorf("placeholder %s: %q is not a recognised field", m, key)
+			}
+		}
+		out = append(out, TemplatePlaceholder{Match: m, Kind: kind, Key: key})
+	}
+	return out, nil
+}
+
+// ValidateTemplate checks the placeholders of a card template.
+func ValidateTemplate(tpl string) error {
+	if strings.TrimSpace(tpl) == "" {
+		return fmt.Errorf("must not be empty")
+	}
+	_, err := TemplatePlaceholders(tpl)
+	return err
 }
 
 func validateRetry(prefix string, r RetryConfig) error {
@@ -453,3 +639,28 @@ func severityRank(s string) (int, bool) {
 
 // SeverityRank is the public accessor for callers in the notify package.
 func SeverityRank(s string) (int, bool) { return severityRank(s) }
+
+// RenderTemplate fills the placeholders of tpl with lookup(kind, key) and
+// reports ok only when every placeholder resolved to a non-empty value: a
+// template is all or nothing, so "PR #{tag:number} merged" never comes out
+// as "PR # merged" for a message without the tag. A template that fails
+// validation renders as not ok.
+func RenderTemplate(tpl string, lookup func(kind, key string) string) (string, bool) {
+	if _, err := TemplatePlaceholders(tpl); err != nil {
+		return "", false
+	}
+	ok := true
+	out := templateBraces.ReplaceAllStringFunc(tpl, func(m string) string {
+		kind, key, _ := strings.Cut(m[1:len(m)-1], ":")
+		v := strings.TrimSpace(lookup(strings.ToLower(strings.TrimSpace(kind)), strings.TrimSpace(key)))
+		if v == "" {
+			ok = false
+		}
+		return v
+	})
+	out = strings.TrimSpace(out)
+	if !ok || out == "" {
+		return "", false
+	}
+	return out, true
+}

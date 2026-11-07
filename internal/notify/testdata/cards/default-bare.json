@@ -1,0 +1,69 @@
+{
+  "type": "message",
+  "summary": "[info] push to main",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "fallbackText": "[info] push to main",
+        "body": [
+          {
+            "type": "Container",
+            "style": "default",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "push to main",
+                "size": "Large",
+                "weight": "Bolder",
+                "wrap": true,
+                "color": "default"
+              },
+              {
+                "type": "TextBlock",
+                "text": "push to main",
+                "wrap": true
+              }
+            ]
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {
+                "title": "Severity",
+                "value": "info"
+              },
+              {
+                "title": "System",
+                "value": "homerun2-git-pitcher"
+              },
+              {
+                "title": "Author",
+                "value": "dependabot[bot]"
+              },
+              {
+                "title": "Tags",
+                "value": "github,push"
+              },
+              {
+                "title": "Time",
+                "value": "not a timestamp"
+              }
+            ]
+          },
+          {
+            "type": "TextBlock",
+            "text": "objectId c0ffee00-homerun2-git-pitcher",
+            "size": "Small",
+            "wrap": true,
+            "isSubtle": true
+          }
+        ]
+      }
+    }
+  ]
+}

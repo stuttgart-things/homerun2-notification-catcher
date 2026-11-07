@@ -1,0 +1,93 @@
+{
+  "type": "message",
+  "summary": "[warning] KubeJobFailed: Job flux-system/image-reflector-cleanup failed to complete.",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.5",
+        "fallbackText": "[warning] KubeJobFailed: Job flux-system/image-reflector-cleanup failed to complete.",
+        "msteams": {
+          "width": "Full"
+        },
+        "body": [
+          {
+            "type": "Container",
+            "style": "warning",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "⚠️ KubeJobFailed",
+                "size": "Large",
+                "weight": "Bolder",
+                "wrap": true
+              }
+            ],
+            "bleed": true
+          },
+          {
+            "type": "TextBlock",
+            "text": "Job flux-system/image-reflector-cleanup failed to complete.",
+            "wrap": true
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {
+                "title": "Author",
+                "value": "alertmanager"
+              },
+              {
+                "title": "System",
+                "value": "kubernetes"
+              },
+              {
+                "title": "Time",
+                "value": "{{DATE(2026-11-07T07:15:00Z, SHORT)}}, {{TIME(2026-11-07T07:15:00Z)}}"
+              }
+            ]
+          },
+          {
+            "type": "Container",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "Tags: alertname=KubeJobFailed, namespace=flux-system, cluster=platform-sthings, status=firing",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true
+              },
+              {
+                "type": "TextBlock",
+                "text": "objectId 5d1c2b7e-alertmanager",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true,
+                "fontType": "Monospace"
+              }
+            ],
+            "id": "details",
+            "isVisible": false
+          }
+        ],
+        "actions": [
+          {
+            "type": "Action.OpenUrl",
+            "title": "Open",
+            "url": "https://grafana.example/alerting/list"
+          },
+          {
+            "type": "Action.ToggleVisibility",
+            "title": "Details",
+            "targetElements": [
+              "details"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -29,13 +29,22 @@ type AdaptiveCard struct {
 	// FallbackText is the plain text a host shows when it cannot render the
 	// card: notification previews and some Teams clients, which otherwise
 	// show only "Card - access it on https://go.skype.com/cards.unsupported".
-	FallbackText string        `json:"fallbackText,omitempty"`
-	Body         []CardElement `json:"body"`
-	Actions      []CardAction  `json:"actions,omitempty"`
+	FallbackText string `json:"fallbackText,omitempty"`
+	// MSTeams carries the Teams-only card properties (rich layout, #82).
+	MSTeams *CardMSTeams  `json:"msteams,omitempty"`
+	Body    []CardElement `json:"body"`
+	Actions []CardAction  `json:"actions,omitempty"`
+}
+
+// CardMSTeams is the card's "msteams" property; Width "Full" spans the
+// channel's width.
+type CardMSTeams struct {
+	Width string `json:"width,omitempty"`
 }
 
 // CardElement is one node in the card body. We model only the subset we emit
-// (Container, TextBlock, FactSet); each carries the union of fields used by
+// (Container, TextBlock, FactSet; ColumnSet, Column and Image for the rich
+// layout); each carries the union of fields used by
 // those types and serialises with `omitempty` so unused fields disappear from
 // the wire payload.
 type CardElement struct {
@@ -50,6 +59,21 @@ type CardElement struct {
 	// IsSubtle dims a TextBlock (the objectId footer).
 	IsSubtle bool       `json:"isSubtle,omitempty"`
 	Facts    []CardFact `json:"facts,omitempty"`
+
+	// Used by the rich layout (#82) only.
+	ID        string `json:"id,omitempty"`
+	IsVisible *bool  `json:"isVisible,omitempty"`
+	Bleed     bool   `json:"bleed,omitempty"`
+	Spacing   string `json:"spacing,omitempty"`
+	FontType  string `json:"fontType,omitempty"`
+	// Columns are a ColumnSet's Column elements.
+	Columns []CardElement `json:"columns,omitempty"`
+	// Width and VerticalContentAlignment lay out a Column.
+	Width                    string `json:"width,omitempty"`
+	VerticalContentAlignment string `json:"verticalContentAlignment,omitempty"`
+	// URL and AltText are an Image's; its Style "Person" crops it round.
+	URL     string `json:"url,omitempty"`
+	AltText string `json:"altText,omitempty"`
 }
 
 // CardFact is one row in a FactSet.
@@ -58,9 +82,11 @@ type CardFact struct {
 	Value string `json:"value"`
 }
 
-// CardAction is one entry in the card's action bar. We only emit Action.OpenUrl.
+// CardAction is one entry in the card's action bar: Action.OpenUrl, and
+// Action.ToggleVisibility for the rich layout's Details button.
 type CardAction struct {
-	Type  string `json:"type"`
-	Title string `json:"title"`
-	URL   string `json:"url,omitempty"`
+	Type           string   `json:"type"`
+	Title          string   `json:"title"`
+	URL            string   `json:"url,omitempty"`
+	TargetElements []string `json:"targetElements,omitempty"`
 }
