@@ -1,3 +1,10 @@
+# [3.17.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.16.0...v3.17.0) (2026-11-07)
+
+
+### Features
+
+* **msteams:** rich card layout ([#83](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/83)) ([69b2947](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/69b2947f101b7969ba7ab161e1e814c329ea07b5)), closes [#82](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/82)
+
 # [3.16.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.15.0...v3.16.0) (2026-10-25)
 
 
