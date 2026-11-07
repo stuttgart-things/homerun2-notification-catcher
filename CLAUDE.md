@@ -79,6 +79,8 @@ Fallback outputs (#74): `fallback: true` sends a message that passes the output'
 
 Firing vs. resolved (#71): `notify.AlertStatus` reads the `status=` tag (omni-pitcher `/pitch/alertmanager`), else a `Resolved: ` message prefix (`/pitch/grafana`). A resolved card is green with a `RESOLVED: ` title and a `Resolved` time row.
 
+Rich card (#82): `card.layout: rich` (per output, or a top-level `card:` default merged field by field, `NotifyConfig.CardFor`) builds `buildRichCard` in `internal/notify/teams_rich.go`: severity-styled header + emoji, `headline`/`subtitle` templates (`{tag:x}`, `{field:x}`, all-or-nothing, list = fallbacks, `config.RenderTemplate`), `avatar: github`, Teams `{{DATE}}`/`{{TIME}}`, `actions`, hidden `details` container, card 1.5, `msteams.width: Full`. The default layout is locked by the golden files in `internal/notify/testdata/cards` (`go test ./internal/notify -run Golden -update` rewrites them).
+
 Per-output failures are logged but don't block the rest of the fan-out. See `notify.example.yaml` for a full example.
 
 Retries (#68): `retry: {attempts, backoff}` at the top level, overridable per output (defaults 3 attempts from 1s, doubling, ≤10s per wait). Transient errors only (connection, timeout, 408/425/429, 5xx, `Retry-After` honoured). Outputs run in parallel per message, messages one at a time; the fan-out has 30s (`dispatchTimeout`, below redisqueue's 60s visibility timeout). A send that still fails is parked in `DEAD_LETTER_STREAM`; the stream entry is acked only when every output delivered or parked it (`notify.Undelivered`, handler error → no ack → redelivered). `Dispatcher.Stop` on SIGTERM ends pending waits.
@@ -120,6 +122,7 @@ Branch-per-issue with PR and merge to main.
 - `internal/config/notify.go` — YAML routing config loader (env interp, validation, severity ranking table)
 - `internal/notify/notifier.go` — `Notifier` interface
 - `internal/notify/teams.go` — MS Teams Adaptive-Card notifier; the preview line goes in the card's `fallbackText` and the envelope's `summary` (#45)
+- `internal/notify/teams_rich.go` — the rich card layout (#82)
 - `internal/notify/webhook.go` — generic JSON webhook notifier
 - `internal/notify/filter.go` — `Matches(filters, msg)` predicate
 - `internal/notify/status.go` — `AlertStatus`: firing / resolved from the `status=` tag or the `Resolved: ` prefix (#71)

@@ -96,7 +96,8 @@ func BuildEnvelope(msg models.CaughtMessage) models.TeamsEnvelope {
 }
 
 // BuildEnvelopeWithCard is BuildEnvelope with an output's card config: its
-// facts, when set, replace the default FactSet.
+// facts, when set, replace the default FactSet; layout rich renders the rich
+// layout (#82).
 func BuildEnvelopeWithCard(msg models.CaughtMessage, card config.CardConfig) models.TeamsEnvelope {
 	content := buildCard(msg.Message, msg.ObjectID, card)
 	return models.TeamsEnvelope{
@@ -110,6 +111,9 @@ func BuildEnvelopeWithCard(msg models.CaughtMessage, card config.CardConfig) mod
 }
 
 func buildCard(msg homerun.Message, objectID string, cfg config.CardConfig) models.AdaptiveCard {
+	if cfg.Rich() {
+		return buildRichCard(msg, objectID, cfg)
+	}
 	title := strings.TrimSpace(msg.Title)
 	if title == "" {
 		title = defaultTitle
@@ -163,7 +167,7 @@ func buildCard(msg homerun.Message, objectID string, cfg config.CardConfig) mode
 
 	facts := buildFacts(msg, resolved)
 	if len(cfg.Facts) > 0 {
-		facts = buildConfiguredFacts(msg, cfg.Facts)
+		facts = buildConfiguredFacts(msg, cfg.Facts, nil)
 	}
 	if len(facts) > 0 {
 		card.Body = append(card.Body, models.CardElement{
@@ -234,13 +238,16 @@ func buildFacts(msg homerun.Message, resolved bool) []models.CardFact {
 }
 
 // buildConfiguredFacts builds the FactSet rows an output's card config asks
-// for, in its order, skipping any row whose value is empty.
-func buildConfiguredFacts(msg homerun.Message, rows []config.CardFactConfig) []models.CardFact {
+// for, in its order, skipping any row whose value is empty. timeFmt, when
+// set, renders the timestamp field (the rich layout's local time).
+func buildConfiguredFacts(msg homerun.Message, rows []config.CardFactConfig, timeFmt func(string) string) []models.CardFact {
 	facts := make([]models.CardFact, 0, len(rows))
 	for _, r := range rows {
 		value := getField(msg, r.Field)
 		if strings.TrimSpace(r.Tag) != "" {
 			value = tagValue(msg.Tags, r.Tag)
+		} else if timeFmt != nil && strings.EqualFold(strings.TrimSpace(r.Field), "timestamp") {
+			value = timeFmt(value)
 		}
 		if v := strings.TrimSpace(value); v != "" {
 			facts = append(facts, models.CardFact{Title: r.Title, Value: v})

@@ -16,7 +16,7 @@ import (
 const teamsURL = "https://prod-12.westeurope.logic.azure.com:443/workflows/0123456789abcdef0123456789abcdef/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sig=SuperSecretSig123"
 
 func testConfig() *config.NotifyConfig {
-	return &config.NotifyConfig{Outputs: []config.OutputConfig{
+	return &config.NotifyConfig{Card: config.CardConfig{Layout: "rich"}, Outputs: []config.OutputConfig{
 		{Name: "teams-platform", Type: config.OutputTypeTeams, WebhookURL: teamsURL,
 			Filters: config.OutputFilters{SeverityMin: "warning", Match: map[string]string{"system": "kubernetes"}},
 			Card:    config.CardConfig{Facts: []config.CardFactConfig{{Title: "Cluster", Tag: "cluster"}}}},
@@ -109,6 +109,7 @@ func TestConfigRedacted(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(v.Outputs) != 2 || v.Outputs[0].Filters.SeverityMin != "warning" || v.Outputs[0].CardFacts[0].Tag != "cluster" ||
+		v.Outputs[0].CardLayout != "rich" || v.Outputs[1].CardLayout != "" ||
 		v.Outputs[1].Method != "PUT" || v.Outputs[1].Headers[0] != "Authorization: REDACTED" {
 		t.Errorf("view: %+v", v)
 	}

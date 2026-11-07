@@ -113,6 +113,7 @@ func NewDispatcher(cfg *config.NotifyConfig, httpClient *http.Client) (*Dispatch
 	}
 	outputs := make([]boundOutput, 0, len(cfg.Outputs))
 	for _, oc := range cfg.Outputs {
+		oc.Card = cfg.CardFor(oc) // the top-level card default, merged (#82)
 		n, err := buildNotifier(oc, httpClient)
 		if err != nil {
 			return nil, fmt.Errorf("dispatcher: output %q: %w", oc.Name, err)

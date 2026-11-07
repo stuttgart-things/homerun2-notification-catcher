@@ -7,6 +7,7 @@ import (
 	homerun "github.com/stuttgart-things/homerun-library/v4"
 
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/config"
+	"github.com/stuttgart-things/homerun2-notification-catcher/internal/models"
 	"github.com/stuttgart-things/homerun2-notification-catcher/internal/notify"
 )
 
@@ -75,6 +76,18 @@ func TestSummarizeSeverityFromFallbackText(t *testing.T) {
 		config.CardConfig{Facts: []config.CardFactConfig{{Title: "K", Tag: "k"}}})
 	m := NewStore(0).AddTeams("a", env, []byte(`{}`))
 	if m.Severity != "warning" || m.Facts["K"] != "v" {
+		t.Errorf("summary: %+v", m)
+	}
+}
+
+func TestSummarizeRichCard(t *testing.T) {
+	// The rich layout (#82) nests its headline in a ColumnSet and the
+	// objectId in the hidden details.
+	msg := homerun.Message{Title: "full title", Severity: "error", Author: "octocat", Tags: "number=7"}
+	env := notify.BuildEnvelopeWithCard(models.CaughtMessage{Message: msg, ObjectID: "obj-1"},
+		config.CardConfig{Layout: "rich", Headline: config.Templates{"PR #{tag:number}"}, Avatar: "github"})
+	m := NewStore(0).AddTeams("a", env, []byte(`{}`))
+	if m.ObjectID != "obj-1" || m.Title != "🔥 PR #7" || m.Style != "attention" || m.Severity != "error" || m.Facts["Author"] != "octocat" {
 		t.Errorf("summary: %+v", m)
 	}
 }

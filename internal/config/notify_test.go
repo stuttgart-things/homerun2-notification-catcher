@@ -442,3 +442,141 @@ func TestValidate_Throttle(t *testing.T) {
 		}
 	}
 }
+
+func TestValidate_RichCard(t *testing.T) {
+	teams := func(c CardConfig) *NotifyConfig {
+		return &NotifyConfig{Outputs: []OutputConfig{{Name: "x", Type: OutputTypeTeams, WebhookURL: "https://a", Card: c}}}
+	}
+	cases := []struct {
+		name string
+		cfg  *NotifyConfig
+		want string // "" = valid
+	}{
+		{"rich", teams(CardConfig{
+			Layout: "rich", Avatar: "github",
+			Headline: Templates{"PR #{tag:number} {tag:action}", "{field:title}"},
+			Subtitle: Templates{"{tag:repo} · {TAG:head} → {tag:base}"},
+			Actions:  []CardActionConfig{{Title: "PR", Field: "url"}, {Title: "Diff", Template: "{field:url}/files"}},
+			Facts:    []CardFactConfig{{Title: "Zeit", Field: "timestamp"}},
+		}), ""},
+		{"default layout", teams(CardConfig{Layout: "default"}), ""},
+		{"avatar none", teams(CardConfig{Layout: "rich", Avatar: "none"}), ""},
+		{"unknown layout", teams(CardConfig{Layout: "fancy"}), `card.layout "fancy": must be default or rich`},
+		{"unknown avatar", teams(CardConfig{Layout: "rich", Avatar: "gravatar"}), `card.avatar "gravatar"`},
+		{"bad placeholder kind", teams(CardConfig{Layout: "rich", Headline: Templates{"PR {label:number}"}}),
+			`card.headline[0] "PR {label:number}": placeholder {label:number}: want {tag:<key>} or {field:<name>}`},
+		{"no colon", teams(CardConfig{Layout: "rich", Subtitle: Templates{"{repo}"}}), "card.subtitle[0]"},
+		{"unknown field", teams(CardConfig{Layout: "rich", Headline: Templates{"{field:hostname}"}}), `"hostname" is not a recognised field`},
+		{"empty tag key", teams(CardConfig{Layout: "rich", Headline: Templates{"{tag:}"}}), "placeholder {tag:}"},
+		{"empty template", teams(CardConfig{Layout: "rich", Headline: Templates{" "}}), "must not be empty"},
+		{"action no title", teams(CardConfig{Actions: []CardActionConfig{{Field: "url"}}}), "card.actions[0]: title is required"},
+		{"action both", teams(CardConfig{Actions: []CardActionConfig{{Title: "a", Field: "url", Template: "{field:url}"}}}), "exactly one of field or template"},
+		{"action neither", teams(CardConfig{Actions: []CardActionConfig{{Title: "a"}}}), "exactly one of field or template"},
+		{"action bad field", teams(CardConfig{Actions: []CardActionConfig{{Title: "a", Field: "link"}}}), `field "link"`},
+		{"action bad template", teams(CardConfig{Actions: []CardActionConfig{{Title: "a", Template: "{x:y}"}}}), "card.actions[0].template"},
+		{"top-level layout", &NotifyConfig{Card: CardConfig{Layout: "nope"}}, `card.layout "nope"`},
+		{"top-level template", &NotifyConfig{Card: CardConfig{Headline: Templates{"{tag}"}}}, "card.headline[0]"},
+		{"webhook", &NotifyConfig{Outputs: []OutputConfig{{
+			Name: "x", Type: OutputTypeWebhook, URL: "https://a", Card: CardConfig{Layout: "rich"},
+		}}}, "only supported"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Validate(tc.cfg)
+			if tc.want == "" {
+				if err != nil {
+					t.Errorf("expected valid, got %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestCardFor(t *testing.T) {
+	cfg := &NotifyConfig{Card: CardConfig{
+		Layout: "rich", Avatar: "github", Headline: Templates{"{tag:alertname}"},
+		Facts: []CardFactConfig{{Title: "A", Tag: "a"}},
+	}}
+	got := cfg.CardFor(OutputConfig{Type: OutputTypeTeams, Card: CardConfig{Headline: Templates{"PR #{tag:number}"}}})
+	if !got.Rich() || got.Avatar != "github" || got.Headline[0] != "PR #{tag:number}" || len(got.Facts) != 1 {
+		t.Errorf("merged card = %+v", got)
+	}
+	if got := cfg.CardFor(OutputConfig{Type: OutputTypeTeams, Card: CardConfig{Layout: "default"}}); got.Rich() {
+		t.Errorf("layout: default per output should win: %+v", got)
+	}
+	if got := cfg.CardFor(OutputConfig{Type: OutputTypeWebhook}); !got.IsZero() {
+		t.Errorf("webhook output got a card: %+v", got)
+	}
+	if got := (&NotifyConfig{}).CardFor(OutputConfig{Type: OutputTypeTeams}); !got.IsZero() {
+		t.Errorf("no card anywhere: %+v", got)
+	}
+}
+
+func TestLoadNotifyConfig_RichCard(t *testing.T) {
+	path := writeTmp(t, `
+card:
+  layout: rich
+outputs:
+  - name: git
+    type: msteams
+    webhook_url: https://a
+    card:
+      headline: "PR #{tag:number} {tag:action}"
+      subtitle:
+        - "{tag:repo} · {tag:head} → {tag:base}"
+        - "{tag:repo}"
+      avatar: github
+      actions:
+        - { title: "PR öffnen", field: url }
+        - { title: Diff, template: "{field:url}/files" }
+`)
+	cfg, err := LoadNotifyConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cfg.CardFor(cfg.Outputs[0])
+	if !c.Rich() || len(c.Headline) != 1 || len(c.Subtitle) != 2 || c.Actions[1].Template != "{field:url}/files" {
+		t.Errorf("card = %+v", c)
+	}
+
+	bad := writeTmp(t, `
+outputs:
+  - name: git
+    type: msteams
+    webhook_url: https://a
+    card: { layout: rich, headline: "PR #{tag:number} {pr:action}" }
+`)
+	if _, err := LoadNotifyConfig(bad); err == nil || !strings.Contains(err.Error(), `output[0] "git": card.headline[0]`) {
+		t.Errorf("expected a headline error, got %v", err)
+	}
+	if _, err := LoadNotifyConfig(writeTmp(t, "outputs:\n  - name: g\n    type: msteams\n    webhook_url: https://a\n    card: { headline: { a: b } }\n")); err == nil {
+		t.Error("expected a decode error for a mapping headline")
+	}
+}
+
+func TestRenderTemplate(t *testing.T) {
+	lookup := func(kind, key string) string {
+		return map[string]string{"tag/number": "42", "tag/action": "merged", "field/url": " https://x "}[kind+"/"+key]
+	}
+	cases := []struct {
+		tpl, want string
+		ok        bool
+	}{
+		{"PR #{tag:number} {tag:action}", "PR #42 merged", true},
+		{"{ TAG : number }", "42", true},
+		{"{field:url}/files", "https://x/files", true},
+		{"PR #{tag:number} {tag:missing}", "", false},
+		{"literal", "literal", true},
+		{"{bad}", "", false},
+	}
+	for _, tc := range cases {
+		got, ok := RenderTemplate(tc.tpl, lookup)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("RenderTemplate(%q) = %q %v, want %q %v", tc.tpl, got, ok, tc.want, tc.ok)
+		}
+	}
+}

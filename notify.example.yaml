@@ -58,6 +58,27 @@ outputs:
         system: kubernetes
       tags_contain: [infra, storage]
 
+  # Rich card layout (#82): severity-styled header with a short headline from
+  # tag/field templates (falls back to the title), GitHub avatar, local time,
+  # buttons, tags + objectId behind "Details". Leave card.layout out for the
+  # default card.
+  - name: teams-git-prs
+    type: msteams
+    webhook_url: "${TEAMS_WEBHOOK_URL}"
+    filters:
+      match:
+        system: homerun2-git-pitcher
+    card:
+      layout: rich
+      headline: "PR #{tag:number} {tag:action}"
+      subtitle:
+        - "{tag:repo} · {tag:head} → {tag:base}"
+        - "{tag:repo}"
+      avatar: github
+      actions:
+        - { title: "PR öffnen", field: url }
+        - { title: Diff, template: "{field:url}/files" }
+
   # Generic JSON webhook (e.g. PagerDuty Events v2, custom internal handler).
   # Fires for critical messages from any system.
   - name: pagerduty-events

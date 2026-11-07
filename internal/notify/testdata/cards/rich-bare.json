@@ -1,0 +1,83 @@
+{
+  "type": "message",
+  "summary": "[info] push to main",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.5",
+        "fallbackText": "[info] push to main",
+        "msteams": {
+          "width": "Full"
+        },
+        "body": [
+          {
+            "type": "Container",
+            "style": "accent",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "ℹ️ push to main",
+                "size": "Large",
+                "weight": "Bolder",
+                "wrap": true
+              }
+            ],
+            "bleed": true
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {
+                "title": "Author",
+                "value": "dependabot[bot]"
+              },
+              {
+                "title": "System",
+                "value": "homerun2-git-pitcher"
+              },
+              {
+                "title": "Time",
+                "value": "not a timestamp"
+              }
+            ]
+          },
+          {
+            "type": "Container",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "Tags: github, push",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true
+              },
+              {
+                "type": "TextBlock",
+                "text": "objectId c0ffee00-homerun2-git-pitcher",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true,
+                "fontType": "Monospace"
+              }
+            ],
+            "id": "details",
+            "isVisible": false
+          }
+        ],
+        "actions": [
+          {
+            "type": "Action.ToggleVisibility",
+            "title": "Details",
+            "targetElements": [
+              "details"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
