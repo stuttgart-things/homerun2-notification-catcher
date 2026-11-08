@@ -22,7 +22,7 @@ const (
 
 // buildRichCard renders msg as the rich layout: a severity-styled header
 // with emoji, short headline, subtitle and optional avatar; the full title
-// and message; a FactSet with the time in the reader's time zone; buttons;
+// and message, or the first card.text template that resolves; a FactSet with the time in the reader's time zone; buttons;
 // tags and objectId collapsed behind "Details". Every part that has no data
 // is left out, so a message without the tags a template asks for still
 // renders, with its title as the headline.
@@ -100,11 +100,15 @@ func buildRichCard(msg homerun.Message, objectID string, cfg config.CardConfig) 
 			Items: headerItems,
 		}},
 	}
-	if headline != title {
-		card.Body = append(card.Body, models.CardElement{Type: "TextBlock", Text: title, Wrap: true})
-	}
-	if body != "" && body != title {
-		card.Body = append(card.Body, models.CardElement{Type: "TextBlock", Text: body, Wrap: true})
+	if text, ok := renderFirst(cfg.Text, lookup); ok {
+		card.Body = append(card.Body, models.CardElement{Type: "TextBlock", Text: text, Wrap: true})
+	} else {
+		if headline != title {
+			card.Body = append(card.Body, models.CardElement{Type: "TextBlock", Text: title, Wrap: true})
+		}
+		if body != "" && body != title {
+			card.Body = append(card.Body, models.CardElement{Type: "TextBlock", Text: body, Wrap: true})
+		}
 	}
 
 	facts := richFacts(msg, resolved)

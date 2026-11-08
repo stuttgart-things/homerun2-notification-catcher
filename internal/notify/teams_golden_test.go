@@ -56,6 +56,21 @@ var (
 			Timestamp: "2026-11-07T09:02:30Z",
 		},
 	}
+	// A git-pitcher PR event with the title= tag (#84): title and message
+	// repeat what header, subtitle and facts show.
+	goldenMergedPRTitleTag = models.CaughtMessage{
+		ObjectID: "4f2a9c3d-homerun2-git-pitcher",
+		Message: homerun.Message{
+			Title:     "PR #4408: chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings (merged) on stuttgart-things/stuttgart-things",
+			Message:   "PR merged by patrick-hermann-sva: chore/claim-machinery-api-v0.28.1 → main",
+			Severity:  "success",
+			Author:    "patrick-hermann-sva",
+			System:    "homerun2-git-pitcher",
+			Tags:      "github,pull_request,repo=stuttgart-things/stuttgart-things,number=4408,action=merged,head=chore/claim-machinery-api-v0.28.1,base=main,actor=patrick-hermann-sva,title=chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings",
+			Timestamp: "2026-11-08T10:12:44Z",
+			URL:       "https://github.com/stuttgart-things/stuttgart-things/pull/4408",
+		},
+	}
 	// A git-pitcher message from before git-pitcher#78: no url, no
 	// key=value tags. The templates fall back.
 	goldenBare = models.CaughtMessage{
@@ -142,6 +157,8 @@ var (
 )
 
 func TestGolden_RichLayout(t *testing.T) {
+	withText := richGitCard
+	withText.Text = config.Templates{"{tag:title}"}
 	withFacts := richGitCard
 	withFacts.Facts = []config.CardFactConfig{
 		{Title: "Repo", Tag: "repo"},
@@ -155,5 +172,6 @@ func TestGolden_RichLayout(t *testing.T) {
 		{"rich-resolved", goldenResolved, richAlertCard},
 		{"rich-bare", goldenBare, richGitCard},
 		{"rich-layout-only", goldenAlert, config.CardConfig{Layout: "rich"}},
+		{"rich-merged-pr-text", goldenMergedPRTitleTag, withText},
 	})
 }

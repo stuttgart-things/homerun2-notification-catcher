@@ -2,6 +2,7 @@ package notify
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -107,6 +108,50 @@ func TestRichCard_HeadlineFallbacks(t *testing.T) {
 		if got := card.Body[0].Items[0].Text; got != want {
 			t.Errorf("tags %q: headline %q, want %q", tags, got, want)
 		}
+	}
+}
+
+// bodyTexts lists the TextBlocks between the header and the FactSet.
+func bodyTexts(card models.AdaptiveCard) []string {
+	var out []string
+	for _, e := range card.Body[1:] {
+		if e.Type != "TextBlock" {
+			break
+		}
+		out = append(out, e.Text)
+	}
+	return out
+}
+
+func TestRichCard_Text(t *testing.T) {
+	msg := homerun.Message{
+		Title: "PR #1: fix: x (merged) on r", Message: "PR merged by a: b → main", Severity: "success",
+		Tags: "number=1,action=merged,title=fix: x",
+	}
+	head := config.Templates{"PR #{tag:number} {tag:action}"}
+	cases := []struct {
+		name string
+		msg  homerun.Message
+		text config.Templates
+		want []string
+	}{
+		{"set, resolves", msg, config.Templates{"{tag:summary}", "{tag:title}"}, []string{"fix: x"}},
+		{"set, none resolves", msg, config.Templates{"{tag:summary}"}, []string{msg.Title, msg.Message}},
+		{"unset", msg, nil, []string{msg.Title, msg.Message}},
+		{"resolved alert", homerun.Message{
+			Title: "KubeJobFailed", Message: "Resolved: job failed", Tags: "status=resolved,alertname=KubeJobFailed",
+		}, config.Templates{"{field:message}"}, []string{"Resolved: job failed"}},
+		{"resolved alert, default body", homerun.Message{
+			Title: "KubeJobFailed", Message: "Resolved: job failed", Tags: "status=resolved",
+		}, config.Templates{"{tag:summary}"}, []string{"job failed"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			card := buildCard(tc.msg, "", config.CardConfig{Layout: "rich", Headline: head, Text: tc.text})
+			if got := bodyTexts(card); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("body texts = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

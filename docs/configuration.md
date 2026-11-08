@@ -171,15 +171,15 @@ Each row sets `title` and exactly one of `tag` (key looked up in the comma-separ
 | Headline | emoji + the first `headline` template whose placeholders all resolve, else the message title; bold, large. |
 | Subtitle | the first `subtitle` template whose placeholders all resolve, small and dimmed under the headline; none if no template resolves. |
 | Avatar | `avatar: github`: `https://github.com/<author>.png`, round (`style: Person`), left of the headline — only when the author looks like a GitHub login and is not a tool or bot (`…[bot]`, `…-bot`, `grafana`, `alertmanager`, `flux`, `renovate`, …, or the message's `system`). `none` (default): no image. |
-| Text | the full title (unless it is the headline) and the message (resolved: without its `Resolved: `). |
+| Text | the first `text` template whose placeholders all resolve, as the only text line (#84); without `text`, or when none resolves, the full title (unless it is the headline) and the message (resolved: without its `Resolved: `). |
 | Facts | `Author`, `System`, `Time` (`Resolved` for a resolution); `card.facts` replaces them as in the default layout. An RFC 3339 timestamp, also in a `field: timestamp` fact, is rendered as `{{DATE(<utc>, SHORT)}}, {{TIME(<utc>)}}`, which Teams shows in the reader's time zone; any other value as is. |
 | Details | hidden `Container` (`id: details`): `Tags: …` and `objectId …` (the sink and `assert-card` still find it); the **Details** button (`Action.ToggleVisibility`) shows it. Left out, with its button, when the message has neither. |
 | Buttons | `actions`: one `Action.OpenUrl` each; without `actions`, **Open** for the message's `url`. A button whose URL comes out empty or is not an absolute `http(s)` URL is left out. |
 | Card | version `1.5`, `msteams.width: Full`; `fallbackText` / `summary` as in the default layout (#45). |
 
-Templates are plain text with placeholders: `{tag:<key>}` (the value of `<key>=` in the message's comma-separated `tags`, case-insensitive) and `{field:<name>}` (a message field, the names `card.facts` takes). A template is all or nothing: if one of its placeholders is empty, the template is skipped, so a message without the tags (an older producer, a different event) falls back to the next template, then to the title — never `PR # merged`. `headline` and `subtitle` take one template or a list tried in order. Each action sets `title` and exactly one of `field` (a message field holding the URL) or `template`.
+Templates are plain text with placeholders: `{tag:<key>}` (the value of `<key>=` in the message's comma-separated `tags`, case-insensitive) and `{field:<name>}` (a message field, the names `card.facts` takes). A template is all or nothing: if one of its placeholders is empty, the template is skipped, so a message without the tags (an older producer, a different event) falls back to the next template, then to the title — never `PR # merged`. `headline`, `subtitle` and `text` take one template or a list tried in order. Each action sets `title` and exactly one of `field` (a message field holding the URL) or `template`.
 
-A git PR output (homerun2-git-pitcher sets `url` and the tags `repo`, `number`, `action`, `head`, `base`, `actor`):
+A git PR output (homerun2-git-pitcher sets `url` and the tags `repo`, `number`, `action`, `head`, `base`, `actor`; the `text` example below also uses its `title` tag):
 
 ```yaml
   - name: teams-git
@@ -223,6 +223,23 @@ renders a merged PR as (envelope left out):
   {"type":"Action.ToggleVisibility","title":"Details","targetElements":["details"]}]}
 ```
 
+#### Card text (#84)
+
+The full title and the message often repeat what the header, subtitle and facts already show — a git-pitcher PR event renders `PR #4408: chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings (merged) on stuttgart-things/stuttgart-things` and `PR merged by patrick-hermann-sva: chore/claim-machinery-api-v0.28.1 → main` under `✅ PR #4408 merged`. `card.text` replaces both lines with one:
+
+```yaml
+    card:
+      layout: rich
+      headline: "PR #{tag:number} {tag:action}"
+      subtitle:
+        - "{tag:repo} · {tag:head} → {tag:base}"
+        - "{tag:repo}"
+      text:
+        - "{tag:title}"      # the PR title alone, from homerun2-git-pitcher's title= tag
+```
+
+renders the body as just `chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings` ([`rich-merged-pr-text.json`](https://github.com/stuttgart-things/homerun2-notification-catcher/blob/main/internal/notify/testdata/cards/rich-merged-pr-text.json)). The `title=` tag (the bare PR title) comes from homerun2-git-pitcher ([homerun2-git-pitcher#80](https://github.com/stuttgart-things/homerun2-git-pitcher/issues/80)); a message without it — an older git-pitcher, a push event — resolves no `text` template and keeps the title and message lines. `text` is rendered as is, also for a resolved alert (`{field:message}` keeps its `Resolved: `). `fallbackText` and `summary` do not change.
+
 An alerts output (omni-pitcher's `/pitch/alertmanager` sets `alertname`, `namespace`, `cluster`, `status`, …):
 
 ```yaml
@@ -243,7 +260,7 @@ An alerts output (omni-pitcher's `/pitch/alertmanager` sets `alertname`, `namesp
 
 A firing `KubeJobFailed` warning gets a yellow header `⚠️ KubeJobFailed` over `flux-system · platform-sthings`; its resolution a green `✅ RESOLVED: KubeJobFailed` with a `Resolved` time. More cards (every case of the tests) are in [`internal/notify/testdata/cards`](https://github.com/stuttgart-things/homerun2-notification-catcher/tree/main/internal/notify/testdata/cards); the sink's card playground renders a `card:` block live.
 
-A top-level `card:` is the default of every `msteams` output, merged field by field with the output's own (`layout`, `avatar`; `headline`, `subtitle`, `actions` and `facts` replace as a whole), so `card: {layout: rich}` at the top switches every Teams output and an output can go back with `card: {layout: default}`.
+A top-level `card:` is the default of every `msteams` output, merged field by field with the output's own (`layout`, `avatar`; `headline`, `subtitle`, `text`, `actions` and `facts` replace as a whole), so `card: {layout: rich}` at the top switches every Teams output and an output can go back with `card: {layout: default}`.
 
 An unknown `layout` or `avatar`, a placeholder other than `{tag:<key>}` / `{field:<known field>}`, an empty template, or an action without `title` or with both or neither of `field` / `template` fails the config load at startup, naming the output and the key, e.g. `output[0] "teams-git": card.headline[0] "PR #{pr:number}": placeholder {pr:number}: want {tag:<key>} or {field:<name>}`.
 
