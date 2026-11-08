@@ -74,6 +74,7 @@ outputs:
       subtitle:
         - "{tag:repo} · {tag:head} → {tag:base}"
         - "{tag:repo}"
+      # text: "{tag:title}"   # body = the PR title alone (git-pitcher title= tag, #84)
       avatar: github
       actions:
         - { title: "PR öffnen", field: url }

@@ -1,0 +1,130 @@
+{
+  "type": "message",
+  "summary": "[success] PR #4408: chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings (merged) on stuttgart-things/stuttgart-things: PR merged by patrick-hermann-sva: chore/claim-machinery-api-v0.28.1 → main",
+  "attachments": [
+    {
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null,
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.5",
+        "fallbackText": "[success] PR #4408: chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings (merged) on stuttgart-things/stuttgart-things: PR merged by patrick-hermann-sva: chore/claim-machinery-api-v0.28.1 → main",
+        "msteams": {
+          "width": "Full"
+        },
+        "body": [
+          {
+            "type": "Container",
+            "style": "good",
+            "items": [
+              {
+                "type": "ColumnSet",
+                "columns": [
+                  {
+                    "type": "Column",
+                    "items": [
+                      {
+                        "type": "Image",
+                        "style": "Person",
+                        "size": "Small",
+                        "url": "https://github.com/patrick-hermann-sva.png",
+                        "altText": "patrick-hermann-sva"
+                      }
+                    ],
+                    "width": "auto"
+                  },
+                  {
+                    "type": "Column",
+                    "items": [
+                      {
+                        "type": "TextBlock",
+                        "text": "✅ PR #4408 merged",
+                        "size": "Large",
+                        "weight": "Bolder",
+                        "wrap": true
+                      },
+                      {
+                        "type": "TextBlock",
+                        "text": "stuttgart-things/stuttgart-things · chore/claim-machinery-api-v0.28.1 → main",
+                        "wrap": true,
+                        "isSubtle": true,
+                        "spacing": "None"
+                      }
+                    ],
+                    "width": "stretch",
+                    "verticalContentAlignment": "Center"
+                  }
+                ]
+              }
+            ],
+            "bleed": true
+          },
+          {
+            "type": "TextBlock",
+            "text": "chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings",
+            "wrap": true
+          },
+          {
+            "type": "FactSet",
+            "facts": [
+              {
+                "title": "Author",
+                "value": "patrick-hermann-sva"
+              },
+              {
+                "title": "System",
+                "value": "homerun2-git-pitcher"
+              },
+              {
+                "title": "Time",
+                "value": "{{DATE(2026-11-08T10:12:44Z, SHORT)}}, {{TIME(2026-11-08T10:12:44Z)}}"
+              }
+            ]
+          },
+          {
+            "type": "Container",
+            "items": [
+              {
+                "type": "TextBlock",
+                "text": "Tags: github, pull_request, repo=stuttgart-things/stuttgart-things, number=4408, action=merged, head=chore/claim-machinery-api-v0.28.1, base=main, actor=patrick-hermann-sva, title=chore(claim-machinery-api): v0.28.1 on labda machinery and platform-sthings",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true
+              },
+              {
+                "type": "TextBlock",
+                "text": "objectId 4f2a9c3d-homerun2-git-pitcher",
+                "size": "Small",
+                "wrap": true,
+                "isSubtle": true,
+                "fontType": "Monospace"
+              }
+            ],
+            "id": "details",
+            "isVisible": false
+          }
+        ],
+        "actions": [
+          {
+            "type": "Action.OpenUrl",
+            "title": "PR öffnen",
+            "url": "https://github.com/stuttgart-things/stuttgart-things/pull/4408"
+          },
+          {
+            "type": "Action.OpenUrl",
+            "title": "Diff",
+            "url": "https://github.com/stuttgart-things/stuttgart-things/pull/4408/files"
+          },
+          {
+            "type": "Action.ToggleVisibility",
+            "title": "Details",
+            "targetElements": [
+              "details"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

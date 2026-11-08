@@ -79,7 +79,7 @@ Fallback outputs (#74): `fallback: true` sends a message that passes the output'
 
 Firing vs. resolved (#71): `notify.AlertStatus` reads the `status=` tag (omni-pitcher `/pitch/alertmanager`), else a `Resolved: ` message prefix (`/pitch/grafana`). A resolved card is green with a `RESOLVED: ` title and a `Resolved` time row.
 
-Rich card (#82): `card.layout: rich` (per output, or a top-level `card:` default merged field by field, `NotifyConfig.CardFor`) builds `buildRichCard` in `internal/notify/teams_rich.go`: severity-styled header + emoji, `headline`/`subtitle` templates (`{tag:x}`, `{field:x}`, all-or-nothing, list = fallbacks, `config.RenderTemplate`), `avatar: github`, Teams `{{DATE}}`/`{{TIME}}`, `actions`, hidden `details` container, card 1.5, `msteams.width: Full`. The default layout is locked by the golden files in `internal/notify/testdata/cards` (`go test ./internal/notify -run Golden -update` rewrites them).
+Rich card (#82): `card.layout: rich` (per output, or a top-level `card:` default merged field by field, `NotifyConfig.CardFor`) builds `buildRichCard` in `internal/notify/teams_rich.go`: severity-styled header + emoji, `headline`/`subtitle` templates (`{tag:x}`, `{field:x}`, all-or-nothing, list = fallbacks, `config.RenderTemplate`), `text` templates replacing the title + message lines when one resolves (#84), `avatar: github`, Teams `{{DATE}}`/`{{TIME}}`, `actions`, hidden `details` container, card 1.5, `msteams.width: Full`. The default layout is locked by the golden files in `internal/notify/testdata/cards` (`go test ./internal/notify -run Golden -update` rewrites them).
 
 Per-output failures are logged but don't block the rest of the fan-out. See `notify.example.yaml` for a full example.
 

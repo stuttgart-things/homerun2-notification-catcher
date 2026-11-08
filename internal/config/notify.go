@@ -165,7 +165,7 @@ type OutputConfig struct {
 // Layout picks the card's shape (#82): unset or "default" is the classic card,
 // "rich" a scannable one with a severity-styled header, a short headline, an
 // optional avatar, local time, buttons and collapsed details. Headline,
-// Subtitle, Avatar and Actions apply to the rich layout only.
+// Subtitle, Text, Avatar and Actions apply to the rich layout only.
 type CardConfig struct {
 	Layout string `yaml:"layout,omitempty"`
 	// Headline is the rich header's text: the first template whose
@@ -174,6 +174,10 @@ type CardConfig struct {
 	// Subtitle is the small, dimmed line under the headline: the first
 	// template whose placeholders all resolve, else none.
 	Subtitle Templates `yaml:"subtitle,omitempty"`
+	// Text is the card's body text (#84): the first template whose
+	// placeholders all resolve replaces the title and message lines; none
+	// resolving (or unset) keeps them.
+	Text Templates `yaml:"text,omitempty"`
 	// Avatar is none (default) or github: https://github.com/<author>.png
 	// when the author looks like a GitHub login.
 	Avatar string `yaml:"avatar,omitempty"`
@@ -193,7 +197,7 @@ const (
 // IsZero reports whether no card field is set.
 func (c CardConfig) IsZero() bool {
 	return c.Layout == "" && len(c.Headline) == 0 && len(c.Subtitle) == 0 &&
-		c.Avatar == "" && len(c.Actions) == 0 && len(c.Facts) == 0
+		len(c.Text) == 0 && c.Avatar == "" && len(c.Actions) == 0 && len(c.Facts) == 0
 }
 
 // Rich reports whether c selects the rich layout.
@@ -229,7 +233,7 @@ type CardActionConfig struct {
 }
 
 // CardFor resolves the card of o: cfg.Card, overridden field by field by
-// o.Card. Lists (headline, subtitle, actions, facts) replace, not append.
+// o.Card. Lists (headline, subtitle, text, actions, facts) replace, not append.
 // Only msteams outputs have a card.
 func (cfg *NotifyConfig) CardFor(o OutputConfig) CardConfig {
 	if o.Type != OutputTypeTeams {
@@ -244,6 +248,9 @@ func (cfg *NotifyConfig) CardFor(o OutputConfig) CardConfig {
 	}
 	if len(o.Card.Subtitle) > 0 {
 		c.Subtitle = o.Card.Subtitle
+	}
+	if len(o.Card.Text) > 0 {
+		c.Text = o.Card.Text
 	}
 	if o.Card.Avatar != "" {
 		c.Avatar = o.Card.Avatar
@@ -496,7 +503,7 @@ func validateCard(prefix string, c CardConfig) error {
 	for _, list := range []struct {
 		name string
 		ts   Templates
-	}{{"headline", c.Headline}, {"subtitle", c.Subtitle}} {
+	}{{"headline", c.Headline}, {"subtitle", c.Subtitle}, {"text", c.Text}} {
 		for j, tpl := range list.ts {
 			if err := ValidateTemplate(tpl); err != nil {
 				return fmt.Errorf("%s.%s[%d] %q: %w", prefix, list.name, j, tpl, err)

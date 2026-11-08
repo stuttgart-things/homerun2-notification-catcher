@@ -465,6 +465,10 @@ func TestValidate_RichCard(t *testing.T) {
 		{"unknown avatar", teams(CardConfig{Layout: "rich", Avatar: "gravatar"}), `card.avatar "gravatar"`},
 		{"bad placeholder kind", teams(CardConfig{Layout: "rich", Headline: Templates{"PR {label:number}"}}),
 			`card.headline[0] "PR {label:number}": placeholder {label:number}: want {tag:<key>} or {field:<name>}`},
+		{"text", teams(CardConfig{Layout: "rich", Text: Templates{"{tag:title}", "{field:message}"}}), ""},
+		{"text empty template", teams(CardConfig{Layout: "rich", Text: Templates{""}}), `output[0] "x": card.text[0] "": `},
+		{"text unknown field", teams(CardConfig{Layout: "rich", Text: Templates{"{field:body}"}}), `card.text[0] "{field:body}"`},
+		{"top-level text", &NotifyConfig{Card: CardConfig{Text: Templates{"{title}"}}}, "card.text[0]"},
 		{"no colon", teams(CardConfig{Layout: "rich", Subtitle: Templates{"{repo}"}}), "card.subtitle[0]"},
 		{"unknown field", teams(CardConfig{Layout: "rich", Headline: Templates{"{field:hostname}"}}), `"hostname" is not a recognised field`},
 		{"empty tag key", teams(CardConfig{Layout: "rich", Headline: Templates{"{tag:}"}}), "placeholder {tag:}"},
@@ -499,11 +503,15 @@ func TestValidate_RichCard(t *testing.T) {
 func TestCardFor(t *testing.T) {
 	cfg := &NotifyConfig{Card: CardConfig{
 		Layout: "rich", Avatar: "github", Headline: Templates{"{tag:alertname}"},
-		Facts: []CardFactConfig{{Title: "A", Tag: "a"}},
+		Facts: []CardFactConfig{{Title: "A", Tag: "a"}}, Text: Templates{"{tag:title}"},
 	}}
 	got := cfg.CardFor(OutputConfig{Type: OutputTypeTeams, Card: CardConfig{Headline: Templates{"PR #{tag:number}"}}})
-	if !got.Rich() || got.Avatar != "github" || got.Headline[0] != "PR #{tag:number}" || len(got.Facts) != 1 {
+	if !got.Rich() || got.Avatar != "github" || got.Headline[0] != "PR #{tag:number}" || len(got.Facts) != 1 ||
+		len(got.Text) != 1 {
 		t.Errorf("merged card = %+v", got)
+	}
+	if got := cfg.CardFor(OutputConfig{Type: OutputTypeTeams, Card: CardConfig{Text: Templates{"{field:message}"}}}); len(got.Text) != 1 || got.Text[0] != "{field:message}" {
+		t.Errorf("output text should replace the default: %+v", got.Text)
 	}
 	if got := cfg.CardFor(OutputConfig{Type: OutputTypeTeams, Card: CardConfig{Layout: "default"}}); got.Rich() {
 		t.Errorf("layout: default per output should win: %+v", got)
@@ -529,6 +537,7 @@ outputs:
       subtitle:
         - "{tag:repo} · {tag:head} → {tag:base}"
         - "{tag:repo}"
+      text: "{tag:title}"
       avatar: github
       actions:
         - { title: "PR öffnen", field: url }
@@ -539,7 +548,7 @@ outputs:
 		t.Fatal(err)
 	}
 	c := cfg.CardFor(cfg.Outputs[0])
-	if !c.Rich() || len(c.Headline) != 1 || len(c.Subtitle) != 2 || c.Actions[1].Template != "{field:url}/files" {
+	if !c.Rich() || len(c.Headline) != 1 || len(c.Subtitle) != 2 || len(c.Text) != 1 || c.Actions[1].Template != "{field:url}/files" {
 		t.Errorf("card = %+v", c)
 	}
 
