@@ -1,3 +1,10 @@
+# [3.18.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.17.0...v3.18.0) (2026-11-08)
+
+
+### Features
+
+* **msteams:** card.text template for the rich card body ([#85](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/85)) ([cf74435](https://github.com/stuttgart-things/homerun2-notification-catcher/commit/cf74435829d479bf4c9fc553184f69baa9febd89)), closes [#84](https://github.com/stuttgart-things/homerun2-notification-catcher/issues/84)
+
 # [3.17.0](https://github.com/stuttgart-things/homerun2-notification-catcher/compare/v3.16.0...v3.17.0) (2026-11-07)
 
 
