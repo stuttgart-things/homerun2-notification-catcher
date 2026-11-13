@@ -133,6 +133,8 @@ github.com/stuttgart-things/homerun-library/v4 v4.3.0 h1:rkUIuUhksktQ3UgLn9uMKCA
 github.com/stuttgart-things/homerun-library/v4 v4.3.0/go.mod h1:77hM9zTUDT4vS7Bj1gIkR3PLvts9zWS6y3M1zBYJJSo=
 github.com/stuttgart-things/homerun-library/v4 v4.5.2 h1:kzTJJUWkk0AXd4GN0uGuvuPSGDX74PjzQabsU4a0FL4=
 github.com/stuttgart-things/homerun-library/v4 v4.5.2/go.mod h1:sIDHh2eNt3+AdQLx+WB4+cgd5/0i8tuXhtYkWgHK7+8=
+github.com/stuttgart-things/homerun-library/v4 v4.6.0 h1:WQXC2b8WIpjgDf0QzcFitCayJWOAjsN8TJNaOKkArFw=
+github.com/stuttgart-things/homerun-library/v4 v4.6.0/go.mod h1:jA/yJzapHjStSKFNLxw4zjRWen5VFbPHP8Y5QW66Lp0=
 github.com/stuttgart-things/redisqueue v0.0.0-20230628084515-1d31f7874df7 h1:nVooDvBYhBPQysVjbvWP3S1CQgmNG/Vovt+ahmv9Cas=
 github.com/stuttgart-things/redisqueue v0.0.0-20230628084515-1d31f7874df7/go.mod h1:RhH+7myjNLGs/BFeYO5U7ekmM7OsymsIOUN/DkewR3g=
 github.com/trivago/tgo v1.0.7 h1:uaWH/XIy9aWYWpjm2CU3RpcqZXmX2ysQ9/Go+d9gyrM=
