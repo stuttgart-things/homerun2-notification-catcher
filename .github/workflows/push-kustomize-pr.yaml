@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   push-kustomize:
-    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-push-kustomize.yaml@main
+    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-push-kustomize.yaml@15bb803fd72658fda50120f8a566d5594061e6ee # v1.2.0
     with:
       runs-on: ubuntu-latest
       kcl-source-dir: kcl
@@ -28,7 +28,7 @@ jobs:
     secrets: inherit # pragma: allowlist secret
 
   push-sink-kustomize:
-    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-push-kustomize.yaml@main
+    uses: stuttgart-things/github-workflow-templates/.github/workflows/call-push-kustomize.yaml@15bb803fd72658fda50120f8a566d5594061e6ee # v1.2.0
     with:
       runs-on: ubuntu-latest
       kcl-source-dir: kcl
